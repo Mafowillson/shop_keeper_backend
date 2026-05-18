@@ -2,8 +2,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  entrypoint = "tmp/api"
-  cmd = "go build -o ./tmp/api ./cmd/api"
+  cmd = "go build -o ./tmp/api.exe ./cmd/api"
+  bin = "tmp/api.exe"
   delay = 300
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_regex = ["_test.go"]
@@ -22,4 +22,4 @@ tmp_dir = "tmp"
 
 [screen]
   clear_on_rebuild = false
-  keep_scroll = truea
+  keep_scroll = true
