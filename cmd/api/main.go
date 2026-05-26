@@ -25,7 +25,7 @@ func main() {
 		}
 	}()
 
-	router := httpserver.NewRouter()
+	router := httpserver.NewRouter(ap)
 
 	// standard go type that runs a http server
 	srv := &http.Server{

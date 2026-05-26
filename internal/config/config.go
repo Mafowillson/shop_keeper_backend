@@ -22,7 +22,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		MongoURI:         strings.TrimSpace(os.Getenv("MONGO_URI")),
 		MongoDBName:      strings.TrimSpace(os.Getenv("DB_NAME")),
-		JWTSecret:        strings.TrimSpace(os.Getenv("PORT")),
+		JWTSecret:        strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		JWTRefreshSecret: strings.TrimSpace(os.Getenv("JWT_REFRESH_SECRET")),
 	}
 

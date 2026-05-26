@@ -11,7 +11,7 @@ import (
 )
 
 type App struct {
-	config config.Config
+	Config config.Config
 
 	MongoClient *mongo.Client
 
@@ -33,7 +33,7 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	return &App{
-		config:      cfg,
+		Config:      cfg,
 		MongoClient: mongoCli.Client,
 		DB:          mongoCli.DB,
 	}, nil
