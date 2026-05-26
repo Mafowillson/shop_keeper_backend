@@ -27,3 +27,23 @@ func RequireOwner() gin.HandlerFunc {
 		ctx.Next()
 	}
 }
+
+func RequireStaff() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		role, ok := GetRole(ctx)
+		if !ok {
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "Unauthorized",
+			})
+			return
+		}
+
+		if !strings.EqualFold(role, "staff") {
+			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "This route can only be accessed by staff",
+			})
+			return
+		}
+		ctx.Next()
+	}
+}
