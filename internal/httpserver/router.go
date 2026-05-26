@@ -4,6 +4,7 @@ import (
 	"shop_keeper_backend/internal/app"
 	"shop_keeper_backend/internal/middleware"
 	"shop_keeper_backend/internal/product"
+	"shop_keeper_backend/internal/sale"
 	"shop_keeper_backend/internal/shop"
 	"shop_keeper_backend/internal/staff"
 	"shop_keeper_backend/internal/user"
@@ -56,6 +57,10 @@ func NewRouter(ap *app.App) *gin.Engine {
 	productSvc := product.NewService(productRepo, shopRepo)
 	productHandler := product.NewHandler(productSvc)
 
+	saleRepo := sale.NewRepo(ap.DB)
+	saleSvc := sale.NewService(saleRepo, productRepo, shopRepo)
+	saleHandler := sale.NewHandler(saleSvc)
+
 	staffSvc := staff.NewService(staffRepo)
 	staffHandler := staff.NewHandler(staffSvc)
 
@@ -86,6 +91,11 @@ func NewRouter(ap *app.App) *gin.Engine {
 	ownerProducts.PUT("/:id", productHandler.Update)
 	ownerProducts.DELETE("/:id", productHandler.Delete)
 	ownerProducts.POST("/sync", productHandler.Sync)
+
+	sales := ownerRoutes.Group("/sales")
+	sales.GET("", saleHandler.List)
+	sales.GET("/:id", saleHandler.Get)
+	sales.POST("", saleHandler.Create)
 
 	return router
 }
