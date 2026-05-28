@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"shop_keeper_backend/internal/app"
+	"shop_keeper_backend/internal/customer"
 	"shop_keeper_backend/internal/middleware"
 	"shop_keeper_backend/internal/product"
 	"shop_keeper_backend/internal/sale"
@@ -57,6 +58,10 @@ func NewRouter(ap *app.App) *gin.Engine {
 	productSvc := product.NewService(productRepo, shopRepo)
 	productHandler := product.NewHandler(productSvc)
 
+	customerRepo := customer.NewRepo(ap.DB)
+	customerSvc := customer.NewService(customerRepo)
+	customerHandler := customer.NewHandler(customerSvc)
+
 	saleRepo := sale.NewRepo(ap.DB)
 	saleSvc := sale.NewService(saleRepo, productRepo, shopRepo)
 	saleHandler := sale.NewHandler(saleSvc)
@@ -67,6 +72,15 @@ func NewRouter(ap *app.App) *gin.Engine {
 	products := protected.Group("/products")
 	products.GET("", productHandler.List)
 	products.GET("/:id", productHandler.Get)
+
+	// Sales recording - accessible to both staff and owner
+	salesPublic := protected.Group("/sales")
+	salesPublic.POST("", saleHandler.Create)
+
+	// Customer management - creation and payment recording by both staff and owner
+	customers := protected.Group("/customers")
+	customers.POST("", customerHandler.Create)
+	customers.POST("/:id/payment", customerHandler.RecordPayment)
 
 	ownerRoutes := protected.Group("")
 	ownerRoutes.Use(middleware.RequireOwner())
@@ -95,7 +109,10 @@ func NewRouter(ap *app.App) *gin.Engine {
 	sales := ownerRoutes.Group("/sales")
 	sales.GET("", saleHandler.List)
 	sales.GET("/:id", saleHandler.Get)
-	sales.POST("", saleHandler.Create)
+
+	ownerCustomers := ownerRoutes.Group("/customers")
+	ownerCustomers.GET("", customerHandler.List)
+	ownerCustomers.GET("/:id/debts", customerHandler.GetDebtHistory)
 
 	return router
 }
