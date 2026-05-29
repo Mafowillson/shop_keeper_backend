@@ -89,12 +89,16 @@ func (service *Service) Create(ctx context.Context, input CreateProductInput, ow
 		return Product{}, errors.New("carton price cannot be negative")
 	}
 
+	if !IsValidProductUnit(input.Unit) {
+		return Product{}, errors.New("unit must be one of: carton, bags, packets, rolls, pieces, box, bundle")
+	}
+
 	if input.CartonQty <= 0 {
 		return Product{}, errors.New("carton quantity must be greater than zero")
 	}
 
-	if input.StockQty < 0 {
-		return Product{}, errors.New("stock quantity cannot be negative")
+	if input.QtyPerCarton <= 0 {
+		return Product{}, errors.New("qty_per_carton must be greater than zero")
 	}
 
 	if input.LowStockThreshold < 0 {
@@ -111,10 +115,12 @@ func (service *Service) Create(ctx context.Context, input CreateProductInput, ow
 		ShopID:            input.ShopID,
 		Name:              strings.TrimSpace(input.Name),
 		Category:          strings.TrimSpace(input.Category),
+		Unit:              strings.ToLower(strings.TrimSpace(input.Unit)),
 		RetailPrice:       input.RetailPrice,
 		CartonPrice:       input.CartonPrice,
 		CartonQty:         input.CartonQty,
-		StockQty:          input.StockQty,
+		QtyPerCarton:      input.QtyPerCarton,
+		StockQty:          input.CartonQty * input.QtyPerCarton,
 		LowStockThreshold: input.LowStockThreshold,
 		IsActive:          true,
 		CreatedAt:         now,
@@ -144,7 +150,8 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 		return Product{}, errors.New("owner id is required")
 	}
 
-	if _, err := service.assertProductOwner(ctx, id, ownerID); err != nil {
+	existing, err := service.assertProductOwner(ctx, id, ownerID)
+	if err != nil {
 		return Product{}, err
 	}
 
@@ -156,6 +163,12 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 	if input.Category != nil {
 		update["category"] = strings.TrimSpace(*input.Category)
 	}
+	if input.Unit != nil {
+		if !IsValidProductUnit(*input.Unit) {
+			return Product{}, errors.New("unit must be one of: carton, bags, packets, rolls, pieces, box, bundle")
+		}
+		update["unit"] = strings.ToLower(strings.TrimSpace(*input.Unit))
+	}
 	if input.RetailPrice != nil {
 		update["retail_price"] = *input.RetailPrice
 	}
@@ -163,16 +176,37 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 		update["carton_price"] = *input.CartonPrice
 	}
 	if input.CartonQty != nil {
+		if *input.CartonQty <= 0 {
+			return Product{}, errors.New("carton quantity must be greater than zero")
+		}
 		update["carton_qty"] = *input.CartonQty
 	}
-	if input.StockQty != nil {
-		update["stock_qty"] = *input.StockQty
+	if input.QtyPerCarton != nil {
+		if *input.QtyPerCarton <= 0 {
+			return Product{}, errors.New("qty_per_carton must be greater than zero")
+		}
+		update["qty_per_carton"] = *input.QtyPerCarton
 	}
 	if input.LowStockThreshold != nil {
+		if *input.LowStockThreshold < 0 {
+			return Product{}, errors.New("low stock threshold cannot be negative")
+		}
 		update["low_stock_threshold"] = *input.LowStockThreshold
 	}
 	if input.IsActive != nil {
 		update["is_active"] = *input.IsActive
+	}
+
+	cartonQty := existing.CartonQty
+	if input.CartonQty != nil {
+		cartonQty = *input.CartonQty
+	}
+	qtyPerCarton := existing.QtyPerCarton
+	if input.QtyPerCarton != nil {
+		qtyPerCarton = *input.QtyPerCarton
+	}
+	if input.CartonQty != nil || input.QtyPerCarton != nil {
+		update["stock_qty"] = cartonQty * qtyPerCarton
 	}
 
 	if len(update) == 1 {
@@ -213,6 +247,18 @@ func (service *Service) Sync(ctx context.Context, input SyncProductsInput, owner
 			return nil, errors.New("shop_id is required for sync")
 		}
 
+		if !IsValidProductUnit(item.Unit) {
+			return nil, errors.New("unit must be one of: carton, bags, packets, rolls, pieces, box, bundle")
+		}
+
+		if item.CartonQty <= 0 {
+			return nil, errors.New("carton quantity must be greater than zero")
+		}
+
+		if item.QtyPerCarton <= 0 {
+			return nil, errors.New("qty_per_carton must be greater than zero")
+		}
+
 		if err := service.validateShopOwner(ctx, item.ShopID, ownerID); err != nil {
 			return nil, err
 		}
@@ -226,10 +272,12 @@ func (service *Service) Sync(ctx context.Context, input SyncProductsInput, owner
 			ShopID:            item.ShopID,
 			Name:              item.Name,
 			Category:          item.Category,
+			Unit:              strings.ToLower(strings.TrimSpace(item.Unit)),
 			RetailPrice:       item.RetailPrice,
 			CartonPrice:       item.CartonPrice,
 			CartonQty:         item.CartonQty,
-			StockQty:          item.StockQty,
+			QtyPerCarton:      item.QtyPerCarton,
+			StockQty:          item.CartonQty * item.QtyPerCarton,
 			LowStockThreshold: item.LowStockThreshold,
 			IsActive:          item.IsActive,
 			CreatedAt:         time.Now().UTC(),
