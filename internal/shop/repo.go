@@ -54,21 +54,27 @@ func (repo *Repo) FindByIDAndOwner(ctx context.Context, id string, ownerID strin
 	return shop, nil
 }
 
-func (repo *Repo) ListByOwner(ctx context.Context, ownerID string) ([]Shop, error) {
+func (repo *Repo) ListByOwner(ctx context.Context, ownerID string, page, pageSize int) ([]Shop, int64, error) {
 	filter := bson.M{"owner_id": ownerID}
 
-	cursor, err := repo.col.Find(ctx, filter)
+	total, err := repo.col.CountDocuments(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("list shops failed: %w", err)
+		return nil, 0, fmt.Errorf("count shops failed: %w", err)
+	}
+
+	opts := options.Find().SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize)).SetSort(bson.M{"created_at": -1})
+	cursor, err := repo.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list shops failed: %w", err)
 	}
 	defer cursor.Close(ctx)
 
 	var shops []Shop
 	if err := cursor.All(ctx, &shops); err != nil {
-		return nil, fmt.Errorf("decode shops failed: %w", err)
+		return nil, 0, fmt.Errorf("decode shops failed: %w", err)
 	}
 
-	return shops, nil
+	return shops, total, nil
 }
 
 func (repo *Repo) Update(ctx context.Context, id string, update bson.M) (Shop, error) {

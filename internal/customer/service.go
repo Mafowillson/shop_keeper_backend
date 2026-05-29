@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"shop_keeper_backend/internal/validation"
+
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -21,11 +23,18 @@ func NewService(repo *Repo) *Service {
 
 // Create creates a new customer for a shop.
 func (svc *Service) Create(ctx context.Context, input CreateCustomerInput) (Customer, error) {
-	if strings.TrimSpace(input.ShopID) == "" {
-		return Customer{}, errors.New("shop_id is required")
+	if err := validation.ValidateUUID(input.ShopID, "shop_id"); err != nil {
+		return Customer{}, err
 	}
-	if strings.TrimSpace(input.Name) == "" {
-		return Customer{}, errors.New("customer name is required")
+
+	if err := validation.ValidateString(input.Name, "customer name", 3, 100); err != nil {
+		return Customer{}, err
+	}
+
+	if strings.TrimSpace(input.Phone) != "" {
+		if err := validation.ValidatePhone(input.Phone); err != nil {
+			return Customer{}, err
+		}
 	}
 
 	now := time.Now().UTC()
@@ -51,11 +60,11 @@ func (svc *Service) GetByID(ctx context.Context, id string) (Customer, error) {
 }
 
 // List retrieves all customers for a shop, optionally filtered by debt status.
-func (svc *Service) List(ctx context.Context, shopID string, hasDebt *bool) ([]Customer, error) {
-	if strings.TrimSpace(shopID) == "" {
-		return nil, errors.New("shop_id is required")
+func (svc *Service) List(ctx context.Context, shopID string, hasDebt *bool, page, pageSize int) ([]Customer, int64, error) {
+	if err := validation.ValidateUUID(shopID, "shop_id"); err != nil {
+		return nil, 0, err
 	}
-	return svc.repo.ListCustomersByShop(ctx, shopID, hasDebt)
+	return svc.repo.ListCustomersByShop(ctx, shopID, hasDebt, page, pageSize)
 }
 
 // RecordPayment records a debt payment for a customer.

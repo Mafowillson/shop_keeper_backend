@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"shop_keeper_backend/internal/customer"
 	"shop_keeper_backend/internal/product"
 	"shop_keeper_backend/internal/shop"
+	"shop_keeper_backend/internal/staff"
 
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -19,13 +21,15 @@ type Service struct {
 	repo        *Repo
 	productRepo *product.Repo
 	shopRepo    *shop.Repo
+	staffRepo   *staff.Repo
+	customerSvc *customer.Service
 }
 
-func NewService(repo *Repo, productRepo *product.Repo, shopRepo *shop.Repo) *Service {
-	return &Service{repo: repo, productRepo: productRepo, shopRepo: shopRepo}
+func NewService(repo *Repo, productRepo *product.Repo, shopRepo *shop.Repo, staffRepo *staff.Repo, customerSvc *customer.Service) *Service {
+	return &Service{repo: repo, productRepo: productRepo, shopRepo: shopRepo, staffRepo: staffRepo, customerSvc: customerSvc}
 }
 
-func (service *Service) validateShopOwner(ctx context.Context, shopID string, ownerID string) error {
+func (service *Service) validateShopUser(ctx context.Context, shopID string, userID string) error {
 	if strings.TrimSpace(shopID) == "" {
 		return errors.New("shop id is required")
 	}
@@ -42,32 +46,48 @@ func (service *Service) validateShopOwner(ctx context.Context, shopID string, ow
 		return errors.New("shop is not active")
 	}
 
-	if strings.TrimSpace(ownerID) == "" {
-		return errors.New("owner id is required")
+	if strings.TrimSpace(userID) == "" {
+		return errors.New("user id is required")
 	}
 
-	if shop.OwnerID != ownerID {
-		return errors.New("shop does not belong to current user")
+	if shop.OwnerID == userID {
+		return nil
+	}
+
+	staff, err := service.staffRepo.FindByID(ctx, userID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return errors.New("user is not authorized for this shop")
+		}
+		return err
+	}
+
+	if !staff.IsActive {
+		return errors.New("staff account is inactive")
+	}
+
+	if staff.ShopID != shopID {
+		return errors.New("staff does not belong to this shop")
 	}
 
 	return nil
 }
 
-func (service *Service) Create(ctx context.Context, ownerID string, input CreateSaleInput) (Sale, error) {
-	if strings.TrimSpace(ownerID) == "" {
-		return Sale{}, errors.New("owner id is required")
+func (service *Service) Create(ctx context.Context, userID string, input CreateSaleInput) (Sale, error) {
+	if strings.TrimSpace(userID) == "" {
+		return Sale{}, errors.New("user id is required")
 	}
 
 	if strings.TrimSpace(input.ShopID) == "" {
 		return Sale{}, errors.New("shop id is required")
 	}
 
-	if len(input.Items) == 0 {
-		return Sale{}, errors.New("sale items are required")
+	if err := service.validateShopUser(ctx, input.ShopID, userID); err != nil {
+		return Sale{}, err
 	}
 
-	if err := service.validateShopOwner(ctx, input.ShopID, ownerID); err != nil {
-		return Sale{}, err
+	if len(input.Items) == 0 {
+		return Sale{}, errors.New("sale items are required")
 	}
 
 	productSeen := map[string]struct{}{}
@@ -136,6 +156,10 @@ func (service *Service) Create(ctx context.Context, ownerID string, input Create
 		totalAmount += itemTotal
 	}
 
+	if input.IsCredit && strings.TrimSpace(input.CustomerID) == "" {
+		return Sale{}, errors.New("customer_id is required for credit sales")
+	}
+
 	paidAmount := input.PaidAmount
 	if paidAmount < 0 {
 		return Sale{}, errors.New("paid amount cannot be negative")
@@ -146,14 +170,20 @@ func (service *Service) Create(ctx context.Context, ownerID string, input Create
 	}
 
 	dueAmount := totalAmount - paidAmount
+	if !input.IsCredit && dueAmount > 0 {
+		return Sale{}, errors.New("non-credit sale must be paid in full")
+	}
+
 	sale := Sale{
 		ID:          uuid.NewString(),
 		ShopID:      input.ShopID,
-		OwnerID:     ownerID,
+		OwnerID:     userID,
+		CustomerID:  strings.TrimSpace(input.CustomerID),
 		Items:       items,
 		TotalAmount: totalAmount,
 		PaidAmount:  paidAmount,
 		DueAmount:   dueAmount,
+		IsCredit:    input.IsCredit,
 		IsPaid:      dueAmount == 0,
 		CreatedAt:   time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
@@ -165,6 +195,17 @@ func (service *Service) Create(ctx context.Context, ownerID string, input Create
 			_, _ = service.productRepo.Update(ctx, updated.id, bson.M{"stock_qty": updated.prevStock, "updated_at": time.Now().UTC()})
 		}
 		return Sale{}, err
+	}
+
+	if input.IsCredit {
+		if _, err := service.customerSvc.AddCredit(ctx, sale.CustomerID, sale.ShopID, sale.ID, userID, sale.DueAmount); err != nil {
+			// Roll back sale creation and restore stock on failure to record credit.
+			_ = service.repo.Delete(ctx, sale.ID)
+			for _, updated := range updatedProducts {
+				_, _ = service.productRepo.Update(ctx, updated.id, bson.M{"stock_qty": updated.prevStock, "updated_at": time.Now().UTC()})
+			}
+			return Sale{}, err
+		}
 	}
 
 	return created, nil
@@ -182,10 +223,10 @@ func (service *Service) GetByIDAndOwner(ctx context.Context, id string, ownerID 
 	return service.repo.FindByIDAndOwner(ctx, id, ownerID)
 }
 
-func (service *Service) ListByOwner(ctx context.Context, ownerID string, shopID string) ([]Sale, error) {
+func (service *Service) ListByOwner(ctx context.Context, ownerID string, shopID string, page, pageSize int) ([]Sale, int64, error) {
 	if strings.TrimSpace(ownerID) == "" {
-		return nil, errors.New("owner id is required")
+		return nil, 0, errors.New("owner id is required")
 	}
 
-	return service.repo.ListByOwner(ctx, ownerID, shopID)
+	return service.repo.ListByOwner(ctx, ownerID, shopID, page, pageSize)
 }

@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"shop_keeper_backend/internal/api"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -58,19 +60,25 @@ func (h *Handler) List(c *gin.Context) {
 	if hasDebtStr != "" {
 		val, err := strconv.ParseBool(hasDebtStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "has_debt must be true or false"})
+			api.BadRequest(c, "has_debt must be true or false")
 			return
 		}
 		hasDebt = &val
 	}
 
-	customers, err := h.service.List(c.Request.Context(), shopID, hasDebt)
+	page, pageSize, err := api.ParsePagination(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		api.BadRequest(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"customers": customers})
+	customers, total, err := h.service.List(c.Request.Context(), shopID, hasDebt, page, pageSize)
+	if err != nil {
+		api.InternalError(c, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"customers": customers, "pagination": api.PaginationMeta(page, pageSize, total)})
 }
 
 // GetDebtHistory handles GET /customers/:id/debts

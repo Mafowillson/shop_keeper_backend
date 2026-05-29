@@ -63,7 +63,7 @@ func NewRouter(ap *app.App) *gin.Engine {
 	customerHandler := customer.NewHandler(customerSvc)
 
 	saleRepo := sale.NewRepo(ap.DB)
-	saleSvc := sale.NewService(saleRepo, productRepo, shopRepo)
+	saleSvc := sale.NewService(saleRepo, productRepo, shopRepo, staffRepo, customerSvc)
 	saleHandler := sale.NewHandler(saleSvc)
 
 	staffSvc := staff.NewService(staffRepo)

@@ -3,6 +3,7 @@ package product
 import (
 	"net/http"
 
+	"shop_keeper_backend/internal/api"
 	"shop_keeper_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -44,13 +45,19 @@ func (h *Handler) List(c *gin.Context) {
 	category := c.Query("category")
 	search := c.Query("search")
 
-	products, err := h.service.List(c.Request.Context(), shopID, category, search)
+	page, pageSize, err := api.ParsePagination(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		api.BadRequest(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"products": products})
+	products, total, err := h.service.List(c.Request.Context(), shopID, category, search, page, pageSize)
+	if err != nil {
+		api.InternalError(c, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"products": products, "pagination": api.PaginationMeta(page, pageSize, total)})
 }
 
 func (h *Handler) Get(c *gin.Context) {

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"shop_keeper_backend/internal/validation"
+
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -23,17 +25,23 @@ func (service *Service) Create(ctx context.Context, ownerID string, input Create
 		return Shop{}, errors.New("owner id is required")
 	}
 
-	name := strings.TrimSpace(input.Name)
-	if name == "" {
-		return Shop{}, errors.New("shop name is required")
+	if err := validation.ValidateString(input.Name, "shop name", 3, 100); err != nil {
+		return Shop{}, err
 	}
+
+	if err := validation.ValidateOptionalString(input.Description, "description", 400); err != nil {
+		return Shop{}, err
+	}
+
+	name := strings.TrimSpace(input.Name)
+	description := strings.TrimSpace(input.Description)
 
 	now := time.Now().UTC()
 	shop := Shop{
 		ID:          uuid.NewString(),
 		OwnerID:     ownerID,
 		Name:        name,
-		Description: strings.TrimSpace(input.Description),
+		Description: description,
 		IsActive:    true,
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -54,12 +62,12 @@ func (service *Service) GetByIDAndOwner(ctx context.Context, id string, ownerID 
 	return service.repo.FindByIDAndOwner(ctx, id, ownerID)
 }
 
-func (service *Service) ListByOwner(ctx context.Context, ownerID string) ([]Shop, error) {
+func (service *Service) ListByOwner(ctx context.Context, ownerID string, page, pageSize int) ([]Shop, int64, error) {
 	if strings.TrimSpace(ownerID) == "" {
-		return nil, errors.New("owner id is required")
+		return nil, 0, errors.New("owner id is required")
 	}
 
-	return service.repo.ListByOwner(ctx, ownerID)
+	return service.repo.ListByOwner(ctx, ownerID, page, pageSize)
 }
 
 func (service *Service) Update(ctx context.Context, id string, ownerID string, input UpdateShopInput) (Shop, error) {

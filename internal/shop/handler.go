@@ -3,6 +3,7 @@ package shop
 import (
 	"net/http"
 
+	"shop_keeper_backend/internal/api"
 	"shop_keeper_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -47,17 +48,23 @@ func (h *Handler) Create(c *gin.Context) {
 func (h *Handler) List(c *gin.Context) {
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		api.Unauthorized(c, "Unauthorized")
 		return
 	}
 
-	shops, err := h.service.ListByOwner(c.Request.Context(), userID)
+	page, pageSize, err := api.ParsePagination(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		api.BadRequest(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"shops": shops})
+	shops, total, err := h.service.ListByOwner(c.Request.Context(), userID, page, pageSize)
+	if err != nil {
+		api.InternalError(c, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"shops": shops, "pagination": api.PaginationMeta(page, pageSize, total)})
 }
 
 func (h *Handler) Get(c *gin.Context) {

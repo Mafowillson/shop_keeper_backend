@@ -45,7 +45,7 @@ func (repo *Repo) GetCustomerByID(ctx context.Context, id string) (Customer, err
 }
 
 // ListCustomersByShop retrieves all customers for a shop, optionally filtered by has_debt.
-func (repo *Repo) ListCustomersByShop(ctx context.Context, shopID string, hasDebt *bool) ([]Customer, error) {
+func (repo *Repo) ListCustomersByShop(ctx context.Context, shopID string, hasDebt *bool, page, pageSize int) ([]Customer, int64, error) {
 	filter := bson.M{"shop_id": shopID}
 	if hasDebt != nil {
 		if *hasDebt {
@@ -55,18 +55,24 @@ func (repo *Repo) ListCustomersByShop(ctx context.Context, shopID string, hasDeb
 		}
 	}
 
-	cursor, err := repo.customerCol.Find(ctx, filter)
+	total, err := repo.customerCol.CountDocuments(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("list customers failed: %w", err)
+		return nil, 0, fmt.Errorf("count customers failed: %w", err)
+	}
+
+	opts := options.Find().SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize)).SetSort(bson.M{"created_at": -1})
+	cursor, err := repo.customerCol.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list customers failed: %w", err)
 	}
 	defer cursor.Close(ctx)
 
 	var customers []Customer
 	if err := cursor.All(ctx, &customers); err != nil {
-		return nil, fmt.Errorf("decode customers failed: %w", err)
+		return nil, 0, fmt.Errorf("decode customers failed: %w", err)
 	}
 
-	return customers, nil
+	return customers, total, nil
 }
 
 // UpdateCustomerDebt updates the total_debt field for a customer.

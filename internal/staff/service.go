@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"shop_keeper_backend/internal/validation"
+
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -29,20 +31,22 @@ func (service *Service) Create(ctx context.Context, ownerID string, input Create
 		return Staff{}, errors.New("owner id is required")
 	}
 
+	if err := validation.ValidateString(input.Name, "staff name", 3, 100); err != nil {
+		return Staff{}, err
+	}
+
+	if err := validation.ValidateEmail(input.Email); err != nil {
+		return Staff{}, err
+	}
+
+	if err := validation.ValidatePhone(input.PhoneNumber); err != nil {
+		return Staff{}, err
+	}
+
+	// Prepare normalized fields
 	name := strings.TrimSpace(input.Name)
-	if name == "" {
-		return Staff{}, errors.New("staff name is required")
-	}
-
 	email := strings.ToLower(strings.TrimSpace(input.Email))
-	if email == "" {
-		return Staff{}, errors.New("staff email is required")
-	}
-
 	phoneNumber := strings.TrimSpace(input.PhoneNumber)
-	if phoneNumber == "" {
-		return Staff{}, errors.New("staff phone number is required")
-	}
 
 	// Check if email already exists
 	_, err := service.repo.FindByEmail(ctx, email)
@@ -88,12 +92,12 @@ func (service *Service) GetByIDAndOwner(ctx context.Context, id string, ownerID 
 	return service.repo.FindByIDAndOwner(ctx, id, ownerID)
 }
 
-func (service *Service) ListByOwner(ctx context.Context, ownerID string) ([]Staff, error) {
+func (service *Service) ListByOwner(ctx context.Context, ownerID string, page, pageSize int) ([]Staff, int64, error) {
 	if strings.TrimSpace(ownerID) == "" {
-		return nil, errors.New("owner id is required")
+		return nil, 0, errors.New("owner id is required")
 	}
 
-	return service.repo.ListByOwner(ctx, ownerID)
+	return service.repo.ListByOwner(ctx, ownerID, page, pageSize)
 }
 
 func (service *Service) ListByShop(ctx context.Context, shopID string) ([]Staff, error) {

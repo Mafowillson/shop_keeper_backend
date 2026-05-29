@@ -70,21 +70,27 @@ func (repo *Repo) FindByIDAndOwner(ctx context.Context, id string, ownerID strin
 	return staff, nil
 }
 
-func (repo *Repo) ListByOwner(ctx context.Context, ownerID string) ([]Staff, error) {
+func (repo *Repo) ListByOwner(ctx context.Context, ownerID string, page, pageSize int) ([]Staff, int64, error) {
 	filter := bson.M{"owner_id": ownerID}
 
-	cursor, err := repo.col.Find(ctx, filter)
+	total, err := repo.col.CountDocuments(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("list staff failed: %w", err)
+		return nil, 0, fmt.Errorf("count staff failed: %w", err)
+	}
+
+	opts := options.Find().SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize)).SetSort(bson.M{"created_at": -1})
+	cursor, err := repo.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list staff failed: %w", err)
 	}
 	defer cursor.Close(ctx)
 
 	var staffList []Staff
 	if err := cursor.All(ctx, &staffList); err != nil {
-		return nil, fmt.Errorf("decode staff failed: %w", err)
+		return nil, 0, fmt.Errorf("decode staff failed: %w", err)
 	}
 
-	return staffList, nil
+	return staffList, total, nil
 }
 
 func (repo *Repo) ListByShop(ctx context.Context, shopID string) ([]Staff, error) {

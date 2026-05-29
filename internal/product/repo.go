@@ -32,7 +32,7 @@ func (repo *Repo) FindByID(ctx context.Context, id string) (Product, error) {
 	return product, nil
 }
 
-func (repo *Repo) List(ctx context.Context, shopID, category, search string) ([]Product, error) {
+func (repo *Repo) List(ctx context.Context, shopID, category, search string, page, pageSize int) ([]Product, int64, error) {
 	filter := bson.M{"is_active": true}
 	if shopID != "" {
 		filter["shop_id"] = shopID
@@ -44,18 +44,24 @@ func (repo *Repo) List(ctx context.Context, shopID, category, search string) ([]
 		filter["name"] = bson.M{"$regex": search, "$options": "i"}
 	}
 
-	cursor, err := repo.col.Find(ctx, filter)
+	total, err := repo.col.CountDocuments(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("list products failed: %w", err)
+		return nil, 0, fmt.Errorf("count products failed: %w", err)
+	}
+
+	opts := options.Find().SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize)).SetSort(bson.M{"created_at": -1})
+	cursor, err := repo.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list products failed: %w", err)
 	}
 	defer cursor.Close(ctx)
 
 	var products []Product
 	if err := cursor.All(ctx, &products); err != nil {
-		return nil, fmt.Errorf("decode products failed: %w", err)
+		return nil, 0, fmt.Errorf("decode products failed: %w", err)
 	}
 
-	return products, nil
+	return products, total, nil
 }
 
 func (repo *Repo) Create(ctx context.Context, product Product) (Product, error) {

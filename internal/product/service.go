@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"shop_keeper_backend/internal/shop"
+	"shop_keeper_backend/internal/validation"
 
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -68,12 +69,40 @@ func (service *Service) Create(ctx context.Context, input CreateProductInput, ow
 		return Product{}, errors.New("owner id is required")
 	}
 
-	if err := service.validateShopOwner(ctx, input.ShopID, ownerID); err != nil {
+	if err := validation.ValidateUUID(input.ShopID, "shop_id"); err != nil {
 		return Product{}, err
 	}
 
-	if strings.TrimSpace(input.Name) == "" {
-		return Product{}, errors.New("product name is required")
+	if err := validation.ValidateString(input.Name, "product name", 3, 100); err != nil {
+		return Product{}, err
+	}
+
+	if err := validation.ValidateString(input.Category, "category", 2, 50); err != nil {
+		return Product{}, err
+	}
+
+	if input.RetailPrice <= 0 {
+		return Product{}, errors.New("retail price must be greater than zero")
+	}
+
+	if input.CartonPrice < 0 {
+		return Product{}, errors.New("carton price cannot be negative")
+	}
+
+	if input.CartonQty <= 0 {
+		return Product{}, errors.New("carton quantity must be greater than zero")
+	}
+
+	if input.StockQty < 0 {
+		return Product{}, errors.New("stock quantity cannot be negative")
+	}
+
+	if input.LowStockThreshold < 0 {
+		return Product{}, errors.New("low stock threshold cannot be negative")
+	}
+
+	if err := service.validateShopOwner(ctx, input.ShopID, ownerID); err != nil {
+		return Product{}, err
 	}
 
 	now := time.Now().UTC()
@@ -102,8 +131,8 @@ func (service *Service) GetByID(ctx context.Context, id string) (Product, error)
 	return service.repo.FindByID(ctx, id)
 }
 
-func (service *Service) List(ctx context.Context, shopID, category, search string) ([]Product, error) {
-	return service.repo.List(ctx, shopID, category, search)
+func (service *Service) List(ctx context.Context, shopID, category, search string, page, pageSize int) ([]Product, int64, error) {
+	return service.repo.List(ctx, shopID, category, search, page, pageSize)
 }
 
 func (service *Service) Update(ctx context.Context, id string, input UpdateProductInput, ownerID string) (Product, error) {
