@@ -28,7 +28,7 @@ func (service *Service) validateShopOwner(ctx context.Context, shopID string, ow
 		return errors.New("shop_id is required")
 	}
 
-	shop, err := service.shopRepo.FindByID(ctx, shopID)
+	s, err := service.shopRepo.FindByID(ctx, shopID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return errors.New("shop not found")
@@ -36,7 +36,7 @@ func (service *Service) validateShopOwner(ctx context.Context, shopID string, ow
 		return err
 	}
 
-	if !shop.IsActive {
+	if !s.IsActive {
 		return errors.New("shop is not active")
 	}
 
@@ -44,7 +44,7 @@ func (service *Service) validateShopOwner(ctx context.Context, shopID string, ow
 		return errors.New("owner id is required")
 	}
 
-	if shop.OwnerID != ownerID {
+	if s.OwnerID != ownerID {
 		return errors.New("shop does not belong to current user")
 	}
 
@@ -52,107 +52,111 @@ func (service *Service) validateShopOwner(ctx context.Context, shopID string, ow
 }
 
 func (service *Service) assertProductOwner(ctx context.Context, id string, ownerID string) (Product, error) {
-	product, err := service.repo.FindByID(ctx, id)
+	p, err := service.repo.FindByID(ctx, id)
 	if err != nil {
 		return Product{}, err
 	}
 
-	if err := service.validateShopOwner(ctx, product.ShopID, ownerID); err != nil {
+	if err := service.validateShopOwner(ctx, p.ShopID, ownerID); err != nil {
 		return Product{}, err
 	}
 
-	return product, nil
+	return p, nil
 }
 
-func (service *Service) Create(ctx context.Context, input CreateProductInput, ownerID string) (Product, error) {
+func (service *Service) Create(ctx context.Context, input CreateProductInput, ownerID string) (ProductResponse, error) {
 	if strings.TrimSpace(ownerID) == "" {
-		return Product{}, errors.New("owner id is required")
+		return ProductResponse{}, errors.New("owner id is required")
 	}
 
 	if err := validation.ValidateUUID(input.ShopID, "shop_id"); err != nil {
-		return Product{}, err
+		return ProductResponse{}, err
 	}
 
 	if err := validation.ValidateString(input.Name, "product name", 3, 100); err != nil {
-		return Product{}, err
+		return ProductResponse{}, err
 	}
 
 	if err := validation.ValidateString(input.Category, "category", 2, 50); err != nil {
-		return Product{}, err
+		return ProductResponse{}, err
 	}
 
-	if input.RetailPrice <= 0 {
-		return Product{}, errors.New("retail price must be greater than zero")
-	}
-
-	if input.CartonPrice < 0 {
-		return Product{}, errors.New("carton price cannot be negative")
-	}
-
-	if !IsValidProductUnit(input.Unit) {
-		return Product{}, errors.New("unit must be one of: carton, bags, packets, rolls, pieces, box, bundle")
-	}
-
-	if input.CartonQty <= 0 {
-		return Product{}, errors.New("carton quantity must be greater than zero")
-	}
-
-	if input.QtyPerCarton <= 0 {
-		return Product{}, errors.New("qty_per_carton must be greater than zero")
+	if err := validateUnits(input.Units); err != nil {
+		return ProductResponse{}, err
 	}
 
 	if input.LowStockThreshold < 0 {
-		return Product{}, errors.New("low stock threshold cannot be negative")
+		return ProductResponse{}, errors.New("low_stock_threshold cannot be negative")
 	}
 
 	if err := service.validateShopOwner(ctx, input.ShopID, ownerID); err != nil {
-		return Product{}, err
+		return ProductResponse{}, err
 	}
 
+	units := normaliseUnits(input.Units)
+	stockQty := computeInitialStock(units, input.InitialStock)
+
 	now := time.Now().UTC()
-	product := Product{
+	p := Product{
 		ID:                uuid.NewString(),
 		ShopID:            input.ShopID,
 		Name:              strings.TrimSpace(input.Name),
 		Category:          strings.TrimSpace(input.Category),
-		Unit:              strings.ToLower(strings.TrimSpace(input.Unit)),
-		RetailPrice:       input.RetailPrice,
-		CartonPrice:       input.CartonPrice,
-		CartonQty:         input.CartonQty,
-		QtyPerCarton:      input.QtyPerCarton,
-		StockQty:          input.CartonQty * input.QtyPerCarton,
+		BaseUnit:          deriveBaseUnit(units),
+		Units:             units,
+		StockQty:          stockQty,
 		LowStockThreshold: input.LowStockThreshold,
 		IsActive:          true,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
 
-	return service.repo.Create(ctx, product)
-}
-
-func (service *Service) GetByID(ctx context.Context, id string) (Product, error) {
-	if strings.TrimSpace(id) == "" {
-		return Product{}, errors.New("product id is required")
+	created, err := service.repo.Create(ctx, p)
+	if err != nil {
+		return ProductResponse{}, err
 	}
-	return service.repo.FindByID(ctx, id)
+
+	return created.ToResponse(), nil
 }
 
-func (service *Service) List(ctx context.Context, shopID, category, search string, page, pageSize int) ([]Product, int64, error) {
-	return service.repo.List(ctx, shopID, category, search, page, pageSize)
-}
-
-func (service *Service) Update(ctx context.Context, id string, input UpdateProductInput, ownerID string) (Product, error) {
+func (service *Service) GetByID(ctx context.Context, id string) (ProductResponse, error) {
 	if strings.TrimSpace(id) == "" {
-		return Product{}, errors.New("product id is required")
+		return ProductResponse{}, errors.New("product id is required")
+	}
+
+	p, err := service.repo.FindByID(ctx, id)
+	if err != nil {
+		return ProductResponse{}, err
+	}
+
+	return p.ToResponse(), nil
+}
+
+func (service *Service) List(ctx context.Context, shopID, category, search string, page, pageSize int) ([]ProductResponse, int64, error) {
+	products, total, err := service.repo.List(ctx, shopID, category, search, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	responses := make([]ProductResponse, len(products))
+	for i, p := range products {
+		responses[i] = p.ToResponse()
+	}
+
+	return responses, total, nil
+}
+
+func (service *Service) Update(ctx context.Context, id string, input UpdateProductInput, ownerID string) (ProductResponse, error) {
+	if strings.TrimSpace(id) == "" {
+		return ProductResponse{}, errors.New("product id is required")
 	}
 
 	if strings.TrimSpace(ownerID) == "" {
-		return Product{}, errors.New("owner id is required")
+		return ProductResponse{}, errors.New("owner id is required")
 	}
 
-	existing, err := service.assertProductOwner(ctx, id, ownerID)
-	if err != nil {
-		return Product{}, err
+	if _, err := service.assertProductOwner(ctx, id, ownerID); err != nil {
+		return ProductResponse{}, err
 	}
 
 	update := bson.M{"updated_at": time.Now().UTC()}
@@ -163,33 +167,17 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 	if input.Category != nil {
 		update["category"] = strings.TrimSpace(*input.Category)
 	}
-	if input.Unit != nil {
-		if !IsValidProductUnit(*input.Unit) {
-			return Product{}, errors.New("unit must be one of: carton, bags, packets, rolls, pieces, box, bundle")
+	if len(input.Units) > 0 {
+		if err := validateUnits(input.Units); err != nil {
+			return ProductResponse{}, err
 		}
-		update["unit"] = strings.ToLower(strings.TrimSpace(*input.Unit))
-	}
-	if input.RetailPrice != nil {
-		update["retail_price"] = *input.RetailPrice
-	}
-	if input.CartonPrice != nil {
-		update["carton_price"] = *input.CartonPrice
-	}
-	if input.CartonQty != nil {
-		if *input.CartonQty <= 0 {
-			return Product{}, errors.New("carton quantity must be greater than zero")
-		}
-		update["carton_qty"] = *input.CartonQty
-	}
-	if input.QtyPerCarton != nil {
-		if *input.QtyPerCarton <= 0 {
-			return Product{}, errors.New("qty_per_carton must be greater than zero")
-		}
-		update["qty_per_carton"] = *input.QtyPerCarton
+		units := normaliseUnits(input.Units)
+		update["units"] = units
+		update["base_unit"] = deriveBaseUnit(units)
 	}
 	if input.LowStockThreshold != nil {
 		if *input.LowStockThreshold < 0 {
-			return Product{}, errors.New("low stock threshold cannot be negative")
+			return ProductResponse{}, errors.New("low_stock_threshold cannot be negative")
 		}
 		update["low_stock_threshold"] = *input.LowStockThreshold
 	}
@@ -197,23 +185,16 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 		update["is_active"] = *input.IsActive
 	}
 
-	cartonQty := existing.CartonQty
-	if input.CartonQty != nil {
-		cartonQty = *input.CartonQty
-	}
-	qtyPerCarton := existing.QtyPerCarton
-	if input.QtyPerCarton != nil {
-		qtyPerCarton = *input.QtyPerCarton
-	}
-	if input.CartonQty != nil || input.QtyPerCarton != nil {
-		update["stock_qty"] = cartonQty * qtyPerCarton
-	}
-
 	if len(update) == 1 {
-		return Product{}, errors.New("no updates provided")
+		return ProductResponse{}, errors.New("no updates provided")
 	}
 
-	return service.repo.Update(ctx, id, update)
+	updated, err := service.repo.Update(ctx, id, update)
+	if err != nil {
+		return ProductResponse{}, err
+	}
+
+	return updated.ToResponse(), nil
 }
 
 func (service *Service) Delete(ctx context.Context, id string, ownerID string) error {
@@ -232,7 +213,7 @@ func (service *Service) Delete(ctx context.Context, id string, ownerID string) e
 	return service.repo.SoftDelete(ctx, id)
 }
 
-func (service *Service) Sync(ctx context.Context, input SyncProductsInput, ownerID string) ([]Product, error) {
+func (service *Service) Sync(ctx context.Context, input SyncProductsInput, ownerID string) ([]ProductResponse, error) {
 	if strings.TrimSpace(ownerID) == "" {
 		return nil, errors.New("owner id is required")
 	}
@@ -247,37 +228,28 @@ func (service *Service) Sync(ctx context.Context, input SyncProductsInput, owner
 			return nil, errors.New("shop_id is required for sync")
 		}
 
-		if !IsValidProductUnit(item.Unit) {
-			return nil, errors.New("unit must be one of: carton, bags, packets, rolls, pieces, box, bundle")
-		}
-
-		if item.CartonQty <= 0 {
-			return nil, errors.New("carton quantity must be greater than zero")
-		}
-
-		if item.QtyPerCarton <= 0 {
-			return nil, errors.New("qty_per_carton must be greater than zero")
+		if err := validateUnits(item.Units); err != nil {
+			return nil, err
 		}
 
 		if err := service.validateShopOwner(ctx, item.ShopID, ownerID); err != nil {
 			return nil, err
 		}
 
-		if strings.TrimSpace(item.ID) == "" {
-			item.ID = uuid.NewString()
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			id = uuid.NewString()
 		}
 
+		units := normaliseUnits(item.Units)
 		products = append(products, Product{
-			ID:                item.ID,
+			ID:                id,
 			ShopID:            item.ShopID,
 			Name:              item.Name,
 			Category:          item.Category,
-			Unit:              strings.ToLower(strings.TrimSpace(item.Unit)),
-			RetailPrice:       item.RetailPrice,
-			CartonPrice:       item.CartonPrice,
-			CartonQty:         item.CartonQty,
-			QtyPerCarton:      item.QtyPerCarton,
-			StockQty:          item.CartonQty * item.QtyPerCarton,
+			BaseUnit:          deriveBaseUnit(units),
+			Units:             units,
+			StockQty:          item.StockQty,
 			LowStockThreshold: item.LowStockThreshold,
 			IsActive:          item.IsActive,
 			CreatedAt:         time.Now().UTC(),
@@ -289,5 +261,10 @@ func (service *Service) Sync(ctx context.Context, input SyncProductsInput, owner
 		return nil, err
 	}
 
-	return products, nil
+	responses := make([]ProductResponse, len(products))
+	for i, p := range products {
+		responses[i] = p.ToResponse()
+	}
+
+	return responses, nil
 }

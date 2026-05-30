@@ -4,9 +4,14 @@ import "time"
 
 type SaleItem struct {
 	ProductID  string  `bson:"product_id" json:"product_id"`
+	// Unit is which unit the customer bought (e.g. "carton", "roll", "packet").
+	Unit       string  `bson:"unit" json:"unit"`
 	Quantity   int     `bson:"quantity" json:"quantity"`
 	UnitPrice  float64 `bson:"unit_price" json:"unit_price"`
 	TotalPrice float64 `bson:"total_price" json:"total_price"`
+	// BaseQtyDeducted is Quantity × unit.QuantityInBase — the number of base units
+	// removed from stock. Stored for audit and restock calculations.
+	BaseQtyDeducted int `bson:"base_qty_deducted" json:"base_qty_deducted"`
 }
 
 type Sale struct {
@@ -26,6 +31,8 @@ type Sale struct {
 
 type CreateSaleItemInput struct {
 	ProductID string `json:"product_id"`
+	// Unit must match one of the product's defined unit names (case-insensitive).
+	Unit      string `json:"unit"`
 	Quantity  int    `json:"quantity"`
 }
 

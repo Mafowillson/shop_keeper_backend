@@ -12,18 +12,20 @@ type Config struct {
 	MongoURI    string
 	MongoDBName string
 
-	JWTSecret        string
-	JWTRefreshSecret string
+	JWTSecret               string
+	JWTRefreshSecret        string
+	FirebaseCredentialsFile string
 }
 
 func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		MongoURI:         strings.TrimSpace(os.Getenv("MONGO_URI")),
-		MongoDBName:      strings.TrimSpace(os.Getenv("DB_NAME")),
-		JWTSecret:        strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		JWTRefreshSecret: strings.TrimSpace(os.Getenv("JWT_REFRESH_SECRET")),
+		MongoURI:                strings.TrimSpace(os.Getenv("MONGO_URI")),
+		MongoDBName:             strings.TrimSpace(os.Getenv("DB_NAME")),
+		JWTSecret:               strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		JWTRefreshSecret:        strings.TrimSpace(os.Getenv("JWT_REFRESH_SECRET")),
+		FirebaseCredentialsFile: strings.TrimSpace(os.Getenv("FIREBASE_CREDENTIALS_FILE")),
 	}
 
 	if cfg.MongoURI == "" {
@@ -40,6 +42,10 @@ func Load() (Config, error) {
 
 	if cfg.JWTRefreshSecret == "" {
 		return Config{}, fmt.Errorf("Missing jwt refresh secret")
+	}
+
+	if cfg.FirebaseCredentialsFile == "" {
+		return Config{}, fmt.Errorf("Missing firebase credentials file")
 	}
 
 	return cfg, nil

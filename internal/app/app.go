@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"shop_keeper_backend/internal/config"
 	"shop_keeper_backend/internal/db"
+	"shop_keeper_backend/internal/fcm"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -16,6 +17,8 @@ type App struct {
 	MongoClient *mongo.Client
 
 	DB *mongo.Database
+
+	FCMClient *fcm.Client
 }
 
 func New(ctx context.Context) (*App, error) {
@@ -32,10 +35,17 @@ func New(ctx context.Context) (*App, error) {
 		return nil, err
 	}
 
+	// init FCM client
+	fcmClient, err := fcm.NewClient(ctx, cfg.FirebaseCredentialsFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init firebase: %w", err)
+	}
+
 	return &App{
 		Config:      cfg,
 		MongoClient: mongoCli.Client,
 		DB:          mongoCli.DB,
+		FCMClient:   fcmClient,
 	}, nil
 }
 

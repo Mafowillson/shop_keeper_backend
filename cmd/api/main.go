@@ -7,6 +7,8 @@ import (
 	"shop_keeper_backend/internal/app"
 	"shop_keeper_backend/internal/httpserver"
 	"time"
+
+	"github.com/gin-contrib/cors"
 )
 
 func main() {
@@ -25,7 +27,18 @@ func main() {
 		}
 	}()
 
+	// CORS configuration
+	corsConfig := cors.Config{}
+
+	corsConfig.AllowAllOrigins = true
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
+	corsConfig.ExposeHeaders = []string{"Content-Length"}
+	corsConfig.AllowCredentials = true
+	corsConfig.MaxAge = 12 * time.Hour
+
 	router := httpserver.NewRouter(ap)
+	router.Use(cors.New(corsConfig))
 
 	// standard go type that runs a http server
 	srv := &http.Server{

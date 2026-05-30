@@ -34,7 +34,7 @@ func (service *Service) validateShopUser(ctx context.Context, shopID string, use
 		return errors.New("shop id is required")
 	}
 
-	shop, err := service.shopRepo.FindByID(ctx, shopID)
+	s, err := service.shopRepo.FindByID(ctx, shopID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return errors.New("shop not found")
@@ -42,7 +42,7 @@ func (service *Service) validateShopUser(ctx context.Context, shopID string, use
 		return err
 	}
 
-	if !shop.IsActive {
+	if !s.IsActive {
 		return errors.New("shop is not active")
 	}
 
@@ -50,11 +50,11 @@ func (service *Service) validateShopUser(ctx context.Context, shopID string, use
 		return errors.New("user id is required")
 	}
 
-	if shop.OwnerID == userID {
+	if s.OwnerID == userID {
 		return nil
 	}
 
-	staff, err := service.staffRepo.FindByID(ctx, userID)
+	st, err := service.staffRepo.FindByID(ctx, userID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return errors.New("user is not authorized for this shop")
@@ -62,11 +62,11 @@ func (service *Service) validateShopUser(ctx context.Context, shopID string, use
 		return err
 	}
 
-	if !staff.IsActive {
+	if !st.IsActive {
 		return errors.New("staff account is inactive")
 	}
 
-	if staff.ShopID != shopID {
+	if st.ShopID != shopID {
 		return errors.New("staff does not belong to this shop")
 	}
 
@@ -104,6 +104,11 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 			return Sale{}, errors.New("product_id is required for sale item")
 		}
 
+		unitName := strings.TrimSpace(item.Unit)
+		if unitName == "" {
+			return Sale{}, errors.New("unit is required for sale item")
+		}
+
 		if item.Quantity <= 0 {
 			return Sale{}, errors.New("quantity must be greater than zero")
 		}
@@ -113,7 +118,7 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 		}
 		productSeen[productID] = struct{}{}
 
-		product, err := service.productRepo.FindByID(ctx, productID)
+		prod, err := service.productRepo.FindByID(ctx, productID)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				return Sale{}, fmt.Errorf("product not found: %s", productID)
@@ -121,22 +126,41 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 			return Sale{}, err
 		}
 
-		if !product.IsActive {
+		if !prod.IsActive {
 			return Sale{}, fmt.Errorf("product %s is not active", productID)
 		}
 
-		if product.ShopID != input.ShopID {
+		if prod.ShopID != input.ShopID {
 			return Sale{}, fmt.Errorf("product %s does not belong to shop %s", productID, input.ShopID)
 		}
 
-		if product.StockQty < item.Quantity {
-			return Sale{}, fmt.Errorf("insufficient stock for product %s", productID)
+		// Resolve the unit the customer is buying.
+		unit, found := prod.FindUnit(unitName)
+		if !found {
+			return Sale{}, fmt.Errorf("unit '%s' is not defined for product '%s'", unitName, prod.Name)
 		}
 
-		newStock := product.StockQty - item.Quantity
-		if _, err := service.productRepo.Update(ctx, productID, bson.M{"stock_qty": newStock, "updated_at": time.Now().UTC()}); err != nil {
+		// Convert the requested quantity into base units to check and deduct stock.
+		baseQtyNeeded := item.Quantity * unit.QuantityInBase
+		if prod.StockQty < baseQtyNeeded {
+			availableInUnit := prod.StockQty / unit.QuantityInBase
+			return Sale{}, fmt.Errorf(
+				"insufficient stock for '%s': requested %d %s but only %d %s available",
+				prod.Name, item.Quantity, unit.Name, availableInUnit, unit.Name,
+			)
+		}
+
+		newStock := prod.StockQty - baseQtyNeeded
+		if _, err := service.productRepo.Update(ctx, productID, bson.M{
+			"stock_qty":  newStock,
+			"updated_at": time.Now().UTC(),
+		}); err != nil {
+			// Roll back any stock changes made so far in this sale.
 			for _, updated := range updatedProducts {
-				_, _ = service.productRepo.Update(ctx, updated.id, bson.M{"stock_qty": updated.prevStock, "updated_at": time.Now().UTC()})
+				_, _ = service.productRepo.Update(ctx, updated.id, bson.M{
+					"stock_qty":  updated.prevStock,
+					"updated_at": time.Now().UTC(),
+				})
 			}
 			return Sale{}, fmt.Errorf("update stock failed for %s: %w", productID, err)
 		}
@@ -144,14 +168,16 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 		updatedProducts = append(updatedProducts, struct {
 			id        string
 			prevStock int
-		}{id: productID, prevStock: product.StockQty})
+		}{id: productID, prevStock: prod.StockQty})
 
-		itemTotal := float64(item.Quantity) * product.RetailPrice
+		itemTotal := float64(item.Quantity) * unit.Price
 		items = append(items, SaleItem{
-			ProductID:  productID,
-			Quantity:   item.Quantity,
-			UnitPrice:  product.RetailPrice,
-			TotalPrice: itemTotal,
+			ProductID:       productID,
+			Unit:            unit.Name,
+			Quantity:        item.Quantity,
+			UnitPrice:       unit.Price,
+			TotalPrice:      itemTotal,
+			BaseQtyDeducted: baseQtyNeeded,
 		})
 		totalAmount += itemTotal
 	}
@@ -192,17 +218,22 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 	created, err := service.repo.Create(ctx, sale)
 	if err != nil {
 		for _, updated := range updatedProducts {
-			_, _ = service.productRepo.Update(ctx, updated.id, bson.M{"stock_qty": updated.prevStock, "updated_at": time.Now().UTC()})
+			_, _ = service.productRepo.Update(ctx, updated.id, bson.M{
+				"stock_qty":  updated.prevStock,
+				"updated_at": time.Now().UTC(),
+			})
 		}
 		return Sale{}, err
 	}
 
 	if input.IsCredit {
 		if _, err := service.customerSvc.AddCredit(ctx, sale.CustomerID, sale.ShopID, sale.ID, userID, sale.DueAmount); err != nil {
-			// Roll back sale creation and restore stock on failure to record credit.
 			_ = service.repo.Delete(ctx, sale.ID)
 			for _, updated := range updatedProducts {
-				_, _ = service.productRepo.Update(ctx, updated.id, bson.M{"stock_qty": updated.prevStock, "updated_at": time.Now().UTC()})
+				_, _ = service.productRepo.Update(ctx, updated.id, bson.M{
+					"stock_qty":  updated.prevStock,
+					"updated_at": time.Now().UTC(),
+				})
 			}
 			return Sale{}, err
 		}
