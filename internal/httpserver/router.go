@@ -3,7 +3,9 @@ package httpserver
 import (
 	"shop_keeper_backend/internal/app"
 	"shop_keeper_backend/internal/customer"
+	"shop_keeper_backend/internal/dashboard"
 	"shop_keeper_backend/internal/middleware"
+	notification "shop_keeper_backend/internal/notifications"
 	"shop_keeper_backend/internal/product"
 	"shop_keeper_backend/internal/sale"
 	"shop_keeper_backend/internal/shop"
@@ -51,8 +53,13 @@ func NewRouter(ap *app.App) *gin.Engine {
 	shopSvc := shop.NewService(shopRepo, userRepo)
 	shopHandler := shop.NewHandler(shopSvc)
 
+	// notifSvc must be created before productSvc — product depends on it.
+	notifRepo := notification.NewRepo(ap.DB)
+	notifSvc := notification.NewService(notifRepo, ap.FCMClient, staffRepo)
+	notifHandler := notification.NewHandler(notifSvc)
+
 	productRepo := product.NewRepo(ap.DB)
-	productSvc := product.NewService(productRepo, shopRepo)
+	productSvc := product.NewService(productRepo, shopRepo, notifSvc)
 	productHandler := product.NewHandler(productSvc)
 
 	customerRepo := customer.NewRepo(ap.DB)
@@ -65,6 +72,10 @@ func NewRouter(ap *app.App) *gin.Engine {
 
 	staffSvc := staff.NewService(staffRepo)
 	staffHandler := staff.NewHandler(staffSvc)
+
+	// FCM token upload — available to all authenticated users (owner + staff).
+	protected.POST("/owner/fcm-token", notifHandler.SaveFCMToken)
+	protected.POST("/staff/fcm-token", staffHandler.SaveFCMToken)
 
 	// Accessible to both staff and owner
 	products := protected.Group("/products")
@@ -110,6 +121,18 @@ func NewRouter(ap *app.App) *gin.Engine {
 	ownerCustomers := ownerRoutes.Group("/customers")
 	ownerCustomers.GET("", customerHandler.List)
 	ownerCustomers.GET("/:id/debts", customerHandler.GetDebtHistory)
+
+	notifs := ownerRoutes.Group("/notifications")
+	notifs.GET("", notifHandler.GetInbox)
+	notifs.PATCH("/:id/read", notifHandler.MarkRead)
+	notifs.PATCH("/read-all", notifHandler.MarkAllRead)
+	notifs.GET("/preferences", notifHandler.GetPreferences)
+	notifs.PUT("/preferences", notifHandler.UpdatePreferences)
+
+	dashSvc := dashboard.NewService(userRepo, shopRepo, saleRepo, productRepo, customerRepo, staffRepo)
+	dashHandler := dashboard.NewHandler(dashSvc)
+	ownerRoutes.GET("/dashboard", dashHandler.GetOwnerDashboard)
+	protected.GET("/staff/dashboard", dashHandler.GetStaffDashboard)
 
 	return router
 }

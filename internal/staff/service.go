@@ -176,6 +176,10 @@ func (service *Service) GetCredentials(ctx context.Context, id string, ownerID s
 	}, nil
 }
 
+func (service *Service) SaveFCMToken(ctx context.Context, staffID, token string) error {
+	return service.repo.SaveFCMToken(ctx, staffID, token)
+}
+
 func (service *Service) AuthenticateStaff(ctx context.Context, email string, phoneNumber string) (Staff, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {

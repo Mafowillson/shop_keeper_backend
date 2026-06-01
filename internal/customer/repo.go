@@ -121,3 +121,23 @@ func (repo *Repo) GetDebtHistoryByCustomer(ctx context.Context, customerID strin
 
 	return records, nil
 }
+
+// TotalDebtByShop sums the total_debt field across all customers in a shop.
+func (repo *Repo) TotalDebtByShop(ctx context.Context, shopID string) (float64, error) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"shop_id": shopID, "total_debt": bson.M{"$gt": 0}}}},
+		{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$total_debt"}}}},
+	}
+	cursor, err := repo.customerCol.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, fmt.Errorf("total debt by shop: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var result []struct {
+		Total float64 `bson:"total"`
+	}
+	if err := cursor.All(ctx, &result); err != nil || len(result) == 0 {
+		return 0, nil
+	}
+	return result[0].Total, nil
+}

@@ -135,3 +135,46 @@ func (repo *Repo) SoftDelete(ctx context.Context, id string) error {
 
 	return nil
 }
+
+func (repo *Repo) SaveFCMToken(ctx context.Context, staffID, token string) error {
+	_, err := repo.col.UpdateOne(
+		ctx,
+		bson.M{"_id": staffID},
+		bson.M{"$set": bson.M{"fcm_token": token, "updated_at": time.Now().UTC()}},
+	)
+	if err != nil {
+		return fmt.Errorf("save staff fcm token failed: %w", err)
+	}
+	return nil
+}
+
+// GetActiveStaffFCMTokens returns all non-empty FCM tokens for active staff in a shop.
+func (repo *Repo) GetActiveStaffFCMTokens(ctx context.Context, shopID string) ([]string, error) {
+	filter := bson.M{
+		"shop_id":   shopID,
+		"is_active": true,
+		"fcm_token": bson.M{"$exists": true, "$ne": ""},
+	}
+	opts := options.Find().SetProjection(bson.M{"fcm_token": 1})
+
+	cursor, err := repo.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("get staff fcm tokens failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var results []struct {
+		FCMToken string `bson:"fcm_token"`
+	}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, fmt.Errorf("decode staff fcm tokens failed: %w", err)
+	}
+
+	tokens := make([]string, 0, len(results))
+	for _, r := range results {
+		if r.FCMToken != "" {
+			tokens = append(tokens, r.FCMToken)
+		}
+	}
+	return tokens, nil
+}

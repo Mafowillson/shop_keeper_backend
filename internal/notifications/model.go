@@ -26,6 +26,11 @@ const (
 
 	// TypeStaffLogin fires every time a staff member successfully logs in.
 	TypeStaffLogin NotificationType = "staff_login"
+
+	// Product catalogue events — sent to staff devices only (not owner inbox).
+	TypeProductAdded   NotificationType = "product_added"
+	TypeProductUpdated NotificationType = "product_updated"
+	TypeProductDeleted NotificationType = "product_deleted"
 )
 
 // -----------------------------------------------------------------------

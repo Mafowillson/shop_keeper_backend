@@ -116,3 +116,17 @@ func (repo *Repo) BulkUpsert(ctx context.Context, products []Product) error {
 
 	return nil
 }
+
+// CountLowStock returns how many active products in a shop are at or below their low_stock_threshold.
+func (repo *Repo) CountLowStock(ctx context.Context, shopID string) (int64, error) {
+	filter := bson.M{
+		"shop_id":   shopID,
+		"is_active": true,
+		"$expr":     bson.M{"$lte": bson.A{"$stock_qty", "$low_stock_threshold"}},
+	}
+	count, err := repo.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("count low stock: %w", err)
+	}
+	return count, nil
+}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"shop_keeper_backend/internal/fcm"
+	"shop_keeper_backend/internal/staff"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -18,14 +19,14 @@ import (
 // Other packages (sale, customer, staff) depend on this interface — not on the
 // concrete struct — so they stay loosely coupled and easy to test.
 type Service struct {
-	repo *Repo
-	fcm  *fcm.Client
+	repo      *Repo
+	fcm       *fcm.Client
+	staffRepo *staff.Repo
 }
 
-// NewService wires the repo and FCM client into the service.
-// Call this in main.go / app.go.
-func NewService(repo *Repo, fcmClient *fcm.Client) *Service {
-	return &Service{repo: repo, fcm: fcmClient}
+// NewService wires the repo, FCM client, and staff repo into the service.
+func NewService(repo *Repo, fcmClient *fcm.Client, staffRepo *staff.Repo) *Service {
+	return &Service{repo: repo, fcm: fcmClient, staffRepo: staffRepo}
 }
 
 // -----------------------------------------------------------------------
@@ -333,6 +334,44 @@ func (s *Service) UpdatePreferences(
 // Called by the handler for POST /api/v1/owner/fcm-token.
 func (s *Service) SaveFCMToken(ctx context.Context, ownerID bson.ObjectID, token string) error {
 	return s.repo.SaveFCMToken(ctx, ownerID, token)
+}
+
+// -----------------------------------------------------------------------
+// Staff notifications — product catalogue changes
+// -----------------------------------------------------------------------
+
+// NotifyStaff sends an FCM push to every active staff member in a shop.
+// Unlike owner notifications these are NOT saved to the MongoDB inbox —
+// they are push-only so staff devices refresh their product list in real time.
+//
+// Called fire-and-forget from product/service.go after create/update/delete.
+func (s *Service) NotifyStaff(
+	ctx context.Context,
+	shopID, title, body string,
+	notifType NotificationType,
+	data map[string]string,
+) {
+	go func() {
+		bgCtx := context.Background()
+
+		tokens, err := s.staffRepo.GetActiveStaffFCMTokens(bgCtx, shopID)
+		if err != nil {
+			log.Printf("notification: get staff tokens for shop %s: %v", shopID, err)
+			return
+		}
+		if len(tokens) == 0 {
+			return
+		}
+
+		payload := map[string]string{"type": string(notifType)}
+		for k, v := range data {
+			payload[k] = v
+		}
+
+		if err := s.fcm.SendToMultiple(bgCtx, tokens, title, body, payload); err != nil {
+			log.Printf("notification: staff multicast for shop %s failed: %v", shopID, err)
+		}
+	}()
 }
 
 // GetLargeSaleThreshold is a helper for sale/service.go.

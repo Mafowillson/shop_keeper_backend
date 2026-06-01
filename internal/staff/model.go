@@ -10,6 +10,7 @@ type Staff struct {
 	Email        string    `bson:"email" json:"email"`
 	PhoneNumber  string    `bson:"phone_number" json:"phone_number"`
 	PasswordHash string    `bson:"password_hash" json:"-"`
+	FCMToken     string    `bson:"fcm_token,omitempty" json:"-"`
 	IsActive     bool      `bson:"is_active" json:"is_active"`
 	CreatedAt    time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt    time.Time `bson:"updated_at" json:"updated_at"`

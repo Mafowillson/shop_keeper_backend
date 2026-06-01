@@ -3,9 +3,11 @@ package product
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
+	notification "shop_keeper_backend/internal/notifications"
 	"shop_keeper_backend/internal/shop"
 	"shop_keeper_backend/internal/validation"
 
@@ -17,10 +19,11 @@ import (
 type Service struct {
 	repo     *Repo
 	shopRepo *shop.Repo
+	notifSvc *notification.Service
 }
 
-func NewService(repo *Repo, shopRepo *shop.Repo) *Service {
-	return &Service{repo: repo, shopRepo: shopRepo}
+func NewService(repo *Repo, shopRepo *shop.Repo, notifSvc *notification.Service) *Service {
+	return &Service{repo: repo, shopRepo: shopRepo, notifSvc: notifSvc}
 }
 
 func (service *Service) validateShopOwner(ctx context.Context, shopID string, ownerID string) error {
@@ -116,6 +119,13 @@ func (service *Service) Create(ctx context.Context, input CreateProductInput, ow
 		return ProductResponse{}, err
 	}
 
+	service.notifSvc.NotifyStaff(ctx, input.ShopID,
+		"🆕 Nouveau produit",
+		fmt.Sprintf("%s a été ajouté au catalogue.", p.Name),
+		notification.TypeProductAdded,
+		map[string]string{"product_id": created.ID},
+	)
+
 	return created.ToResponse(), nil
 }
 
@@ -194,6 +204,17 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 		return ProductResponse{}, err
 	}
 
+	notifBody := fmt.Sprintf("%s a été mis à jour.", updated.Name)
+	if len(input.Units) > 0 {
+		notifBody = fmt.Sprintf("Le prix de %s a été modifié.", updated.Name)
+	}
+	service.notifSvc.NotifyStaff(ctx, updated.ShopID,
+		"✏️ Produit mis à jour",
+		notifBody,
+		notification.TypeProductUpdated,
+		map[string]string{"product_id": updated.ID},
+	)
+
 	return updated.ToResponse(), nil
 }
 
@@ -206,11 +227,23 @@ func (service *Service) Delete(ctx context.Context, id string, ownerID string) e
 		return errors.New("owner id is required")
 	}
 
-	if _, err := service.assertProductOwner(ctx, id, ownerID); err != nil {
+	p, err := service.assertProductOwner(ctx, id, ownerID)
+	if err != nil {
 		return err
 	}
 
-	return service.repo.SoftDelete(ctx, id)
+	if err := service.repo.SoftDelete(ctx, id); err != nil {
+		return err
+	}
+
+	service.notifSvc.NotifyStaff(ctx, p.ShopID,
+		"🗑️ Produit retiré",
+		fmt.Sprintf("%s a été retiré du catalogue.", p.Name),
+		notification.TypeProductDeleted,
+		map[string]string{"product_id": p.ID},
+	)
+
+	return nil
 }
 
 func (service *Service) Sync(ctx context.Context, input SyncProductsInput, ownerID string) ([]ProductResponse, error) {

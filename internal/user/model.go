@@ -60,7 +60,9 @@ func ToPublic(u User) PublicUser {
 		CreatedAt:     u.CreatedAt,
 		UpdatedAt:     u.UpdatedAt,
 	}
-	if u.ShopID != "" {
+	// Zero ObjectID hex ("000000000000000000000000") means no shop was set —
+	// treat it the same as empty so the mobile app redirects to shop creation.
+	if u.ShopID != "" && u.ShopID != "000000000000000000000000" {
 		public.ShopID = u.ShopID
 	}
 	return public

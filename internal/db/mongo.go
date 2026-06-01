@@ -21,7 +21,15 @@ func Connect(ctx context.Context, cfg config.Config) (*Mongo, error) {
 	conntectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	clientOpts := options.Client().ApplyURI(cfg.MongoURI)
+	clientOpts := options.Client().
+		ApplyURI(cfg.MongoURI).
+		SetBSONOptions(&options.BSONOptions{
+			// Existing User documents stored shop_id as bson.ObjectID.
+			// After migrating the field to string, we need the driver to
+			// decode ObjectID values as their 24-char hex representation
+			// so those rows don't break FindByEmail / FindByID.
+			ObjectIDAsHexString: true,
+		})
 
 	client, err := mongo.Connect(clientOpts)
 	if err != nil {

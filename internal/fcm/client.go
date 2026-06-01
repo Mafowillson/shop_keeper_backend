@@ -93,3 +93,39 @@ func (c *Client) SendToToken(
 	}
 	return nil
 }
+
+// SendToMultiple sends the same notification to a list of device tokens in one
+// Firebase batch call. Tokens that are invalid or expired are silently skipped —
+// the overall send is non-fatal so a stale token never blocks a product update.
+func (c *Client) SendToMultiple(
+	ctx context.Context,
+	tokens []string,
+	title, body string,
+	data map[string]string,
+) error {
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	message := &messaging.MulticastMessage{
+		Tokens: tokens,
+		Notification: &messaging.Notification{
+			Title: title,
+			Body:  body,
+		},
+		Data: data,
+		Android: &messaging.AndroidConfig{
+			Priority: "high",
+			Notification: &messaging.AndroidNotification{
+				Sound:     "default",
+				ChannelID: "shopkeeper_alerts",
+			},
+		},
+	}
+
+	_, err := c.messaging.SendEachForMulticast(ctx, message)
+	if err != nil {
+		return fmt.Errorf("fcm: multicast send failed: %w", err)
+	}
+	return nil
+}
