@@ -10,7 +10,7 @@ import (
 type User struct {
 	ID bson.ObjectID `bson:"_id,omitempty" json:"id"`
 
-	ShopID bson.ObjectID `bson:"shop_id" json:"shop_id"`
+	ShopID string `bson:"shop_id,omitempty" json:"shop_id,omitempty"`
 
 	Name string `bson:"name" json:"name"`
 
@@ -60,8 +60,8 @@ func ToPublic(u User) PublicUser {
 		CreatedAt:     u.CreatedAt,
 		UpdatedAt:     u.UpdatedAt,
 	}
-	if !u.ShopID.IsZero() {
-		public.ShopID = u.ShopID.Hex()
+	if u.ShopID != "" {
+		public.ShopID = u.ShopID
 	}
 	return public
 }
