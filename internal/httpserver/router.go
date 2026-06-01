@@ -14,25 +14,18 @@ import (
 )
 
 func NewRouter(ap *app.App) *gin.Engine {
-
 	router := gin.New()
-
 	router.Use(gin.Logger())
-
 	router.Use(gin.Recovery())
-
 	router.GET("/health", health)
 
 	userRepo := user.NewRepo(ap.DB)
-
-	userSvc := user.NewService(userRepo, ap.Config.JWTSecret, ap.Config.JWTRefreshSecret)
-
+	userSvc := user.NewService(userRepo, ap.EmailService, ap.Config.JWTSecret, ap.Config.JWTRefreshSecret)
 	userHandler := user.NewHandler(userSvc)
 
-	// API versioning
 	api := router.Group("/api/v1")
 
-	// Public auth routes
+	// ── Public auth ─────────────────────────────────────────────────────────
 	auth := api.Group("/auth")
 	auth.POST("/register", userHandler.Register)
 	auth.POST("/login", userHandler.Login)
@@ -42,19 +35,23 @@ func NewRouter(ap *app.App) *gin.Engine {
 	staffRepo := staff.NewRepo(ap.DB)
 	staffAuthSvc := staff.NewAuthService(staffRepo, ap.Config.JWTSecret, ap.Config.JWTRefreshSecret)
 	staffAuthHandler := staff.NewAuthHandler(staffAuthSvc)
-
 	auth.POST("/staff/login", staffAuthHandler.Login)
+	auth.POST("/forgot-password", userHandler.ForgotPassword)
+	auth.POST("/reset-password", userHandler.ResetPassword)
 
-	// Protected API routes
+	// ── Protected routes (valid JWT required) ───────────────────────────────
 	protected := api.Group("")
 	protected.Use(middleware.AuthRequired(ap.Config.JWTSecret))
 
-	productRepo := product.NewRepo(ap.DB)
-	shopRepo := shop.NewRepo(ap.DB)
+	// Email verification (owner must be logged in but not yet verified)
+	protected.POST("/auth/verify-email", userHandler.VerifyEmail)
+	protected.POST("/auth/resend-verification", userHandler.ResendVerificationCode)
 
-	shopSvc := shop.NewService(shopRepo)
+	shopRepo := shop.NewRepo(ap.DB)
+	shopSvc := shop.NewService(shopRepo, userRepo)
 	shopHandler := shop.NewHandler(shopSvc)
 
+	productRepo := product.NewRepo(ap.DB)
 	productSvc := product.NewService(productRepo, shopRepo)
 	productHandler := product.NewHandler(productSvc)
 
@@ -69,19 +66,19 @@ func NewRouter(ap *app.App) *gin.Engine {
 	staffSvc := staff.NewService(staffRepo)
 	staffHandler := staff.NewHandler(staffSvc)
 
+	// Accessible to both staff and owner
 	products := protected.Group("/products")
 	products.GET("", productHandler.List)
 	products.GET("/:id", productHandler.Get)
 
-	// Sales recording - accessible to both staff and owner
 	salesPublic := protected.Group("/sales")
 	salesPublic.POST("", saleHandler.Create)
 
-	// Customer management - creation and payment recording by both staff and owner
 	customers := protected.Group("/customers")
 	customers.POST("", customerHandler.Create)
 	customers.POST("/:id/payment", customerHandler.RecordPayment)
 
+	// ── Owner-only routes ───────────────────────────────────────────────────
 	ownerRoutes := protected.Group("")
 	ownerRoutes.Use(middleware.RequireOwner())
 
@@ -92,13 +89,13 @@ func NewRouter(ap *app.App) *gin.Engine {
 	shops.PUT("/:id", shopHandler.Update)
 	shops.DELETE("/:id", shopHandler.Delete)
 
-	staff := ownerRoutes.Group("/staff")
-	staff.GET("", staffHandler.List)
-	staff.GET("/:id", staffHandler.Get)
-	staff.GET("/:id/credentials", staffHandler.GetCredentials)
-	staff.POST("", staffHandler.Create)
-	staff.PUT("/:id", staffHandler.Update)
-	staff.DELETE("/:id", staffHandler.Delete)
+	staffGroup := ownerRoutes.Group("/staff")
+	staffGroup.GET("", staffHandler.List)
+	staffGroup.GET("/:id", staffHandler.Get)
+	staffGroup.GET("/:id/credentials", staffHandler.GetCredentials)
+	staffGroup.POST("", staffHandler.Create)
+	staffGroup.PUT("/:id", staffHandler.Update)
+	staffGroup.DELETE("/:id", staffHandler.Delete)
 
 	ownerProducts := ownerRoutes.Group("/products")
 	ownerProducts.POST("", productHandler.Create)

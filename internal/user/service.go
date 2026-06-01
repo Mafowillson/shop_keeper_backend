@@ -2,10 +2,13 @@ package user
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math/big"
 	"shop_keeper_backend/internal/auth"
+	"shop_keeper_backend/internal/email"
 	"strings"
 	"time"
 
@@ -14,41 +17,16 @@ import (
 )
 
 type Service struct {
-	repo *Repo
-
+	repo         *Repo
+	emailSvc     *email.Service
 	jwtSecret        string
 	jwtRefreshSecret string
 }
 
-func NewService(repo *Repo, jwtSecret string, jwtRefreshSecret string) *Service {
-	return &Service{repo: repo, jwtSecret: jwtSecret, jwtRefreshSecret: jwtRefreshSecret}
+func NewService(repo *Repo, emailSvc *email.Service, jwtSecret string, jwtRefreshSecret string) *Service {
+	return &Service{repo: repo, emailSvc: emailSvc, jwtSecret: jwtSecret, jwtRefreshSecret: jwtRefreshSecret}
 }
 
-type RegisterInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Name     string `json:"name,omitempty"`
-}
-
-type LoginInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	DeviceID string `json:"device_id,omitempty"`
-}
-
-type RefreshInput struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
-type LogoutInput struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
-type AuthResult struct {
-	Token        string     `json:"token"`
-	RefreshToken string     `json:"refresh_token"`
-	User         PublicUser `json:"user"`
-}
 
 func (service *Service) Register(ctx context.Context, input RegisterInput) (AuthResult, error) {
 	email := strings.ToLower(strings.TrimSpace(input.Email))
@@ -57,7 +35,6 @@ func (service *Service) Register(ctx context.Context, input RegisterInput) (Auth
 	if email == "" || pass == "" {
 		return AuthResult{}, errors.New("email and password are required")
 	}
-
 	if len(pass) < 6 {
 		return AuthResult{}, errors.New("Password must be atleast 6 characters long")
 	}
@@ -66,7 +43,6 @@ func (service *Service) Register(ctx context.Context, input RegisterInput) (Auth
 	if err == nil {
 		return AuthResult{}, errors.New("Email is already registered! try using another email")
 	}
-
 	if !errors.Is(err, mongo.ErrNoDocuments) {
 		return AuthResult{}, err
 	}
@@ -76,20 +52,30 @@ func (service *Service) Register(ctx context.Context, input RegisterInput) (Auth
 		return AuthResult{}, fmt.Errorf("Hashing password failed: %w", err)
 	}
 
-	now := time.Now().UTC()
+	code, expiry := service.generateCode()
 
+	now := time.Now().UTC()
 	u := User{
-		Email:        email,
-		Name:         strings.TrimSpace(input.Name),
-		PasswordHash: string(hashBytes),
-		Role:         "owner",
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		Email:                  email,
+		Name:                   strings.TrimSpace(input.Name),
+		PasswordHash:           string(hashBytes),
+		Role:                   "owner",
+		EmailVerified:          false,
+		VerificationCode:       code,
+		VerificationCodeExpiry: expiry,
+		VerificationSentAt:     now,
+		CreatedAt:              now,
+		UpdatedAt:              now,
 	}
 
 	created, err := service.repo.Create(ctx, u)
 	if err != nil {
 		return AuthResult{}, err
+	}
+
+	// Send verification email. Non-fatal — account is created regardless.
+	if sendErr := service.emailSvc.SendVerificationCode(created.Email, created.Name, code); sendErr != nil {
+		fmt.Printf("[email] Failed to send verification code to %s: %v\n", created.Email, sendErr)
 	}
 
 	return service.createSession(ctx, created)
@@ -102,7 +88,6 @@ func (service *Service) Login(ctx context.Context, input LoginInput) (AuthResult
 	if email == "" || pass == "" {
 		return AuthResult{}, errors.New("email and password are required")
 	}
-
 	if len(pass) < 6 {
 		return AuthResult{}, errors.New("Password must be atleast 6 characters long")
 	}
@@ -174,6 +159,161 @@ func (service *Service) Logout(ctx context.Context, input LogoutInput) error {
 	}
 
 	return service.repo.ClearRefreshToken(ctx, u.ID.Hex())
+}
+
+// VerifyEmail validates the OTP code and marks the user's email as verified.
+func (service *Service) VerifyEmail(ctx context.Context, userID string, input VerifyEmailInput) (AuthResult, error) {
+	code := strings.TrimSpace(input.Code)
+	if len(code) != 6 {
+		return AuthResult{}, errors.New("verification code must be 6 digits")
+	}
+
+	u, err := service.repo.FindByID(ctx, userID)
+	if err != nil {
+		return AuthResult{}, errors.New("user not found")
+	}
+
+	if u.EmailVerified {
+		// Idempotent — already verified, return success.
+		return service.createSession(ctx, u)
+	}
+
+	if u.VerificationCode == "" {
+		return AuthResult{}, errors.New("no verification code found — request a new one")
+	}
+
+	if time.Now().UTC().After(u.VerificationCodeExpiry) {
+		return AuthResult{}, errors.New("verification code has expired — request a new one")
+	}
+
+	if u.VerificationCode != code {
+		return AuthResult{}, errors.New("incorrect verification code")
+	}
+
+	if err := service.repo.MarkEmailVerified(ctx, userID); err != nil {
+		return AuthResult{}, err
+	}
+
+	u.EmailVerified = true
+	return service.createSession(ctx, u)
+}
+
+// ResendVerificationCode generates a fresh code and re-sends the email.
+// Rate-limited to one resend per 60 seconds.
+func (service *Service) ResendVerificationCode(ctx context.Context, userID string) error {
+	u, err := service.repo.FindByID(ctx, userID)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	if u.EmailVerified {
+		return errors.New("email is already verified")
+	}
+
+	if !u.VerificationSentAt.IsZero() && time.Since(u.VerificationSentAt) < 60*time.Second {
+		remaining := 60 - int(time.Since(u.VerificationSentAt).Seconds())
+		return fmt.Errorf("please wait %d seconds before requesting a new code", remaining)
+	}
+
+	code, expiry := service.generateCode()
+
+	if err := service.repo.SaveVerificationCode(ctx, userID, code, expiry); err != nil {
+		return err
+	}
+
+	if sendErr := service.emailSvc.SendVerificationCode(u.Email, u.Name, code); sendErr != nil {
+		fmt.Printf("[email] Failed to resend verification code to %s: %v\n", u.Email, sendErr)
+	}
+
+	return nil
+}
+
+// ForgotPassword generates a reset code and emails it to the user.
+// Always returns nil regardless of whether the email exists — this prevents
+// email enumeration attacks (attacker can't tell if an account exists).
+func (service *Service) ForgotPassword(ctx context.Context, input ForgotPasswordInput) error {
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	if email == "" {
+		return errors.New("email is required")
+	}
+
+	u, err := service.repo.FindByEmail(ctx, email)
+	if err != nil {
+		// Silently succeed — do not reveal whether the email is registered.
+		return nil
+	}
+
+	// Rate-limit: one code per 60 seconds.
+	if !u.PasswordResetSentAt.IsZero() && time.Since(u.PasswordResetSentAt) < 60*time.Second {
+		return nil // Silently ignore to avoid timing side-channel.
+	}
+
+	code, expiry := service.generateCode()
+
+	if err := service.repo.SavePasswordResetCode(ctx, u.ID.Hex(), code, expiry); err != nil {
+		return err
+	}
+
+	if sendErr := service.emailSvc.SendPasswordResetCode(u.Email, u.Name, code); sendErr != nil {
+		fmt.Printf("[email] Failed to send password reset to %s: %v\n", u.Email, sendErr)
+	}
+
+	return nil
+}
+
+// ResetPassword validates the code and updates the user's password.
+// On success all active sessions are invalidated so the old password stops working.
+func (service *Service) ResetPassword(ctx context.Context, input ResetPasswordInput) error {
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	code := strings.TrimSpace(input.Code)
+	newPass := strings.TrimSpace(input.NewPassword)
+
+	if email == "" {
+		return errors.New("email is required")
+	}
+	if len(code) != 6 {
+		return errors.New("reset code must be 6 digits")
+	}
+	if len(newPass) < 6 {
+		return errors.New("password must be at least 6 characters")
+	}
+
+	u, err := service.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return errors.New("invalid reset code")
+	}
+
+	if u.PasswordResetCode == "" {
+		return errors.New("no password reset was requested for this account")
+	}
+
+	if time.Now().UTC().After(u.PasswordResetExpiry) {
+		return errors.New("reset code has expired — request a new one")
+	}
+
+	if u.PasswordResetCode != code {
+		return errors.New("invalid reset code")
+	}
+
+	hashBytes, err := bcrypt.GenerateFromPassword([]byte(newPass), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hashing password: %w", err)
+	}
+
+	return service.repo.ResetPassword(ctx, u.ID.Hex(), string(hashBytes))
+}
+
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+func (service *Service) generateCode() (code string, expiry time.Time) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		// Fallback (should never happen on supported platforms).
+		n = big.NewInt(123456)
+	}
+	code = fmt.Sprintf("%06d", n.Int64())
+	expiry = time.Now().UTC().Add(15 * time.Minute)
+	return
 }
 
 func hashRefreshTokenToken(refreshToken string) []byte {

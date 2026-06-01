@@ -19,97 +19,147 @@ func NewRepo(db *mongo.Database) *Repo {
 	return &Repo{col: db.Collection("users")}
 }
 
-func (repo *Repo) FindByEmail(ctx context.Context, email string) (User, error) {
+func (r *Repo) FindByEmail(ctx context.Context, email string) (User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
-
-	filter := bson.M{"email": email}
-
-	var user User
-
-	err := repo.col.FindOne(ctx, filter).Decode(&user)
-
-	if err != nil {
+	var u User
+	if err := r.col.FindOne(ctx, bson.M{"email": email}).Decode(&u); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return User{}, mongo.ErrNoDocuments
 		}
-
-		return User{}, fmt.Errorf("find by email failed: %v", err)
+		return User{}, fmt.Errorf("find by email: %w", err)
 	}
-
-	return user, nil
+	return u, nil
 }
 
-func (repo *Repo) FindByID(ctx context.Context, id string) (User, error) {
-	objectID, err := bson.ObjectIDFromHex(strings.TrimSpace(id))
+func (r *Repo) FindByID(ctx context.Context, id string) (User, error) {
+	oid, err := bson.ObjectIDFromHex(strings.TrimSpace(id))
 	if err != nil {
 		return User{}, fmt.Errorf("invalid user id: %w", err)
 	}
-
-	filter := bson.M{"_id": objectID}
-
-	var user User
-	if err := repo.col.FindOne(ctx, filter).Decode(&user); err != nil {
+	var u User
+	if err := r.col.FindOne(ctx, bson.M{"_id": oid}).Decode(&u); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return User{}, mongo.ErrNoDocuments
 		}
-		return User{}, fmt.Errorf("find user by id failed: %v", err)
+		return User{}, fmt.Errorf("find by id: %w", err)
 	}
-
-	return user, nil
+	return u, nil
 }
 
-func (repo *Repo) Create(ctx context.Context, user User) (User, error) {
-
-	res, err := repo.col.InsertOne(ctx, user)
+func (r *Repo) Create(ctx context.Context, u User) (User, error) {
+	res, err := r.col.InsertOne(ctx, u)
 	if err != nil {
-		return User{}, fmt.Errorf("Insert user failed: %w", err)
+		return User{}, fmt.Errorf("create user: %w", err)
 	}
-
 	id, ok := res.InsertedID.(bson.ObjectID)
-
 	if !ok {
-		return User{}, fmt.Errorf("Insert user failed and id is not objectid: %w", err)
+		return User{}, fmt.Errorf("create user: inserted id is not ObjectID")
 	}
-
-	user.ID = id
-
-	return user, nil
+	u.ID = id
+	return u, nil
 }
 
-func (repo *Repo) UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string) error {
-	objectID, err := bson.ObjectIDFromHex(strings.TrimSpace(userID))
+func (r *Repo) UpdateShopID(ctx context.Context, userID, shopID string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
 	if err != nil {
 		return fmt.Errorf("invalid user id: %w", err)
 	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"refresh_token_hash": refreshTokenHash,
-			"updated_at":         time.Now().UTC(),
-		},
-	}
-
-	if _, err := repo.col.UpdateOne(ctx, bson.M{"_id": objectID}, update); err != nil {
-		return fmt.Errorf("update refresh token failed: %w", err)
-	}
-
-	return nil
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+		"$set": bson.M{"shop_id": shopID, "updated_at": time.Now().UTC()},
+	})
+	return err
 }
 
-func (repo *Repo) ClearRefreshToken(ctx context.Context, userID string) error {
-	objectID, err := bson.ObjectIDFromHex(strings.TrimSpace(userID))
+func (r *Repo) UpdateRefreshToken(ctx context.Context, userID, hash string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
 	if err != nil {
 		return fmt.Errorf("invalid user id: %w", err)
 	}
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+		"$set": bson.M{"refresh_token_hash": hash, "updated_at": time.Now().UTC()},
+	})
+	return err
+}
 
-	update := bson.M{
+func (r *Repo) ClearRefreshToken(ctx context.Context, userID string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
 		"$unset": bson.M{"refresh_token_hash": ""},
 		"$set":   bson.M{"updated_at": time.Now().UTC()},
-	}
+	})
+	return err
+}
 
-	if _, err := repo.col.UpdateOne(ctx, bson.M{"_id": objectID}, update); err != nil {
-		return fmt.Errorf("clear refresh token failed: %w", err)
-	}
+// ── Email verification ────────────────────────────────────────────────────────
 
-	return nil
+func (r *Repo) SaveVerificationCode(ctx context.Context, userID, code string, expiry time.Time) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	now := time.Now().UTC()
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+		"$set": bson.M{
+			"verification_code":        code,
+			"verification_code_expiry": expiry,
+			"verification_sent_at":     now,
+			"updated_at":               now,
+		},
+	})
+	return err
+}
+
+func (r *Repo) MarkEmailVerified(ctx context.Context, userID string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+		"$set":   bson.M{"email_verified": true, "updated_at": time.Now().UTC()},
+		"$unset": bson.M{"verification_code": "", "verification_code_expiry": "", "verification_sent_at": ""},
+	})
+	return err
+}
+
+// ── Password reset ────────────────────────────────────────────────────────────
+
+func (r *Repo) SavePasswordResetCode(ctx context.Context, userID, code string, expiry time.Time) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	now := time.Now().UTC()
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+		"$set": bson.M{
+			"password_reset_code":     code,
+			"password_reset_expiry":   expiry,
+			"password_reset_sent_at":  now,
+			"updated_at":              now,
+		},
+	})
+	return err
+}
+
+func (r *Repo) ResetPassword(ctx context.Context, userID, newPasswordHash string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+		"$set": bson.M{
+			"PasswordHash": newPasswordHash,
+			"updated_at":   time.Now().UTC(),
+		},
+		"$unset": bson.M{
+			"password_reset_code":    "",
+			"password_reset_expiry":  "",
+			"password_reset_sent_at": "",
+			// Invalidate all active sessions so the old password can't be reused.
+			"refresh_token_hash": "",
+		},
+	})
+	return err
 }

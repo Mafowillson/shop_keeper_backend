@@ -3,6 +3,7 @@ package shop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -12,12 +13,18 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-type Service struct {
-	repo *Repo
+// UserUpdater lets the shop service persist the shop_id back to the owner record.
+type UserUpdater interface {
+	UpdateShopID(ctx context.Context, ownerID, shopID string) error
 }
 
-func NewService(repo *Repo) *Service {
-	return &Service{repo: repo}
+type Service struct {
+	repo        *Repo
+	userUpdater UserUpdater
+}
+
+func NewService(repo *Repo, userUpdater UserUpdater) *Service {
+	return &Service{repo: repo, userUpdater: userUpdater}
 }
 
 func (service *Service) Create(ctx context.Context, ownerID string, input CreateShopInput) (Shop, error) {
@@ -47,7 +54,18 @@ func (service *Service) Create(ctx context.Context, ownerID string, input Create
 		UpdatedAt:   now,
 	}
 
-	return service.repo.Create(ctx, shop)
+	created, err := service.repo.Create(ctx, shop)
+	if err != nil {
+		return Shop{}, err
+	}
+
+	// Persist the shop_id back onto the owner's user record so login responses
+	// include it without a separate lookup.
+	if updateErr := service.userUpdater.UpdateShopID(ctx, ownerID, created.ID); updateErr != nil {
+		fmt.Printf("[shop] failed to update owner shop_id: %v\n", updateErr)
+	}
+
+	return created, nil
 }
 
 func (service *Service) GetByIDAndOwner(ctx context.Context, id string, ownerID string) (Shop, error) {
