@@ -130,3 +130,23 @@ func (repo *Repo) CountLowStock(ctx context.Context, shopID string) (int64, erro
 	}
 	return count, nil
 }
+
+// ListLowStock returns up to limit active products at or below their low_stock_threshold, sorted by stock ascending.
+func (repo *Repo) ListLowStock(ctx context.Context, shopID string, limit int) ([]Product, error) {
+	filter := bson.M{
+		"shop_id":   shopID,
+		"is_active": true,
+		"$expr":     bson.M{"$lte": bson.A{"$stock_qty", "$low_stock_threshold"}},
+	}
+	opts := options.Find().SetSort(bson.M{"stock_qty": 1}).SetLimit(int64(limit))
+	cursor, err := repo.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("list low stock: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var products []Product
+	if err := cursor.All(ctx, &products); err != nil {
+		return nil, fmt.Errorf("decode low stock: %w", err)
+	}
+	return products, nil
+}

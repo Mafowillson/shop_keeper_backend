@@ -3,6 +3,8 @@ package notification
 import (
 	"net/http"
 
+	"shop_keeper_backend/internal/middleware"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -27,14 +29,14 @@ func NewHandler(service *Service) *Handler {
 // -----------------------------------------------------------------------
 
 func ownerIDFromCtx(c *gin.Context) (bson.ObjectID, bool) {
-	raw, exists := c.Get("userID")
-	if !exists {
+	userIDStr, ok := middleware.GetUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return bson.NilObjectID, false
 	}
-	id, ok := raw.(bson.ObjectID)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid user id in context"})
+	id, err := bson.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid user id"})
 		return bson.NilObjectID, false
 	}
 	return id, true

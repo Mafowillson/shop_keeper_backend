@@ -2,6 +2,7 @@ package staff
 
 import (
 	"net/http"
+	"strings"
 
 	"shop_keeper_backend/internal/api"
 	"shop_keeper_backend/internal/middleware"
@@ -11,11 +12,34 @@ import (
 )
 
 type Handler struct {
-	service *Service
+	service    *Service
+	shopLookup ShopLookup
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, shopLookup ShopLookup) *Handler {
+	return &Handler{service: service, shopLookup: shopLookup}
+}
+
+func (h *Handler) GetMyShop(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	staffMember, err := h.service.GetByID(c.Request.Context(), userID)
+	if err != nil || staffMember.ShopID == "" || h.shopLookup == nil {
+		c.JSON(http.StatusOK, gin.H{"shop_name": "", "shop_description": ""})
+		return
+	}
+
+	name, desc, err := h.shopLookup.GetShopSummary(c.Request.Context(), staffMember.ShopID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"shop_name": "", "shop_description": ""})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"shop_name": name, "shop_description": desc})
 }
 
 func (h *Handler) getUserID(c *gin.Context) (string, bool) {
@@ -34,6 +58,13 @@ func (h *Handler) Create(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
 		return
+	}
+
+	// Auto-assign the owner's shop if the caller didn't specify one.
+	if strings.TrimSpace(input.ShopID) == "" && h.shopLookup != nil {
+		if shopID, err := h.shopLookup.GetOwnerShopID(c.Request.Context(), userID); err == nil {
+			input.ShopID = shopID
+		}
 	}
 
 	staff, err := h.service.Create(c.Request.Context(), userID, input)

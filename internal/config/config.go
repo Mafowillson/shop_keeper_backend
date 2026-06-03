@@ -17,6 +17,8 @@ type Config struct {
 	JWTRefreshSecret        string
 	FirebaseCredentialsFile string
 
+	GroqAPIKey string
+
 	// SMTP — optional. If Host is empty the email service logs codes to stdout
 	// instead of sending real emails (useful in development).
 	SMTPHost     string
@@ -35,6 +37,7 @@ func Load() (Config, error) {
 		JWTSecret:               strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		JWTRefreshSecret:        strings.TrimSpace(os.Getenv("JWT_REFRESH_SECRET")),
 		FirebaseCredentialsFile: strings.TrimSpace(os.Getenv("FIREBASE_CREDENTIALS_FILE")),
+		GroqAPIKey:              strings.TrimSpace(os.Getenv("GROQ_API_KEY")),
 		SMTPHost:                strings.TrimSpace(os.Getenv("SMTP_HOST")),
 		SMTPUsername:            strings.TrimSpace(os.Getenv("SMTP_USER")),
 		SMTPPassword:            strings.TrimSpace(os.Getenv("SMTP_PASSWORD")),

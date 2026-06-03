@@ -3,6 +3,7 @@ package sale
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -26,24 +27,26 @@ func (repo *Repo) Create(ctx context.Context, sale Sale) (Sale, error) {
 	return sale, nil
 }
 
-func (repo *Repo) FindByIDAndOwner(ctx context.Context, id string, ownerID string) (Sale, error) {
-	filter := bson.M{"_id": id, "owner_id": ownerID}
-
+func (repo *Repo) FindByID(ctx context.Context, id string) (Sale, error) {
 	var sale Sale
-	if err := repo.col.FindOne(ctx, filter).Decode(&sale); err != nil {
+	if err := repo.col.FindOne(ctx, bson.M{"_id": id}).Decode(&sale); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return Sale{}, mongo.ErrNoDocuments
 		}
 		return Sale{}, fmt.Errorf("find sale failed: %w", err)
 	}
-
 	return sale, nil
 }
 
 func (repo *Repo) ListByOwner(ctx context.Context, ownerID string, shopID string, page, pageSize int) ([]Sale, int64, error) {
-	filter := bson.M{"owner_id": ownerID}
-	if shopID != "" {
-		filter["shop_id"] = shopID
+	// Filter by shop when available — captures all sales in the shop regardless
+	// of whether they were recorded by the owner or a staff member.
+	// Fall back to owner_id only when no shop is specified.
+	var filter bson.M
+	if strings.TrimSpace(shopID) != "" {
+		filter = bson.M{"shop_id": shopID}
+	} else {
+		filter = bson.M{"owner_id": ownerID}
 	}
 
 	total, err := repo.col.CountDocuments(ctx, filter)

@@ -1,7 +1,10 @@
 package httpserver
 
 import (
+	"context"
+	"fmt"
 	"shop_keeper_backend/internal/app"
+	"shop_keeper_backend/internal/chat"
 	"shop_keeper_backend/internal/customer"
 	"shop_keeper_backend/internal/dashboard"
 	"shop_keeper_backend/internal/middleware"
@@ -14,6 +17,28 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// shopInfoAdapter adapts *shop.Repo to satisfy staff.ShopLookup.
+type shopInfoAdapter struct{ repo *shop.Repo }
+
+func (a shopInfoAdapter) GetShopSummary(ctx context.Context, shopID string) (string, string, error) {
+	s, err := a.repo.FindByID(ctx, shopID)
+	if err != nil {
+		return "", "", err
+	}
+	return s.Name, s.Description, nil
+}
+
+func (a shopInfoAdapter) GetOwnerShopID(ctx context.Context, ownerID string) (string, error) {
+	shops, _, err := a.repo.ListByOwner(ctx, ownerID, 1, 1)
+	if err != nil {
+		return "", err
+	}
+	if len(shops) == 0 {
+		return "", fmt.Errorf("no shop found for owner")
+	}
+	return shops[0].ID, nil
+}
 
 func NewRouter(ap *app.App) *gin.Engine {
 	router := gin.New()
@@ -35,9 +60,22 @@ func NewRouter(ap *app.App) *gin.Engine {
 	auth.POST("/logout", userHandler.Logout)
 
 	staffRepo := staff.NewRepo(ap.DB)
-	staffAuthSvc := staff.NewAuthService(staffRepo, ap.Config.JWTSecret, ap.Config.JWTRefreshSecret)
+	shopRepo := shop.NewRepo(ap.DB)
+
+	// notifSvc is created here (before staffAuthSvc) so it can be passed to
+	// staffAuthSvc for the staff-login notification.
+	notifRepo := notification.NewRepo(ap.DB)
+	notifSvc := notification.NewService(notifRepo, ap.FCMClient, staffRepo)
+
+	staffAuthSvc := staff.NewAuthService(
+		staffRepo,
+		ap.Config.JWTSecret, ap.Config.JWTRefreshSecret,
+		notifSvc,
+		shopInfoAdapter{shopRepo},
+	)
 	staffAuthHandler := staff.NewAuthHandler(staffAuthSvc)
 	auth.POST("/staff/login", staffAuthHandler.Login)
+	auth.POST("/staff/refresh", staffAuthHandler.Refresh)
 	auth.POST("/forgot-password", userHandler.ForgotPassword)
 	auth.POST("/reset-password", userHandler.ResetPassword)
 
@@ -49,13 +87,8 @@ func NewRouter(ap *app.App) *gin.Engine {
 	protected.POST("/auth/verify-email", userHandler.VerifyEmail)
 	protected.POST("/auth/resend-verification", userHandler.ResendVerificationCode)
 
-	shopRepo := shop.NewRepo(ap.DB)
 	shopSvc := shop.NewService(shopRepo, userRepo)
 	shopHandler := shop.NewHandler(shopSvc)
-
-	// notifSvc must be created before productSvc — product depends on it.
-	notifRepo := notification.NewRepo(ap.DB)
-	notifSvc := notification.NewService(notifRepo, ap.FCMClient, staffRepo)
 	notifHandler := notification.NewHandler(notifSvc)
 
 	productRepo := product.NewRepo(ap.DB)
@@ -71,11 +104,12 @@ func NewRouter(ap *app.App) *gin.Engine {
 	saleHandler := sale.NewHandler(saleSvc)
 
 	staffSvc := staff.NewService(staffRepo)
-	staffHandler := staff.NewHandler(staffSvc)
+	staffHandler := staff.NewHandler(staffSvc, shopInfoAdapter{shopRepo})
 
 	// FCM token upload — available to all authenticated users (owner + staff).
 	protected.POST("/owner/fcm-token", notifHandler.SaveFCMToken)
 	protected.POST("/staff/fcm-token", staffHandler.SaveFCMToken)
+	protected.GET("/staff/my-shop", staffHandler.GetMyShop)
 
 	// Accessible to both staff and owner
 	products := protected.Group("/products")
@@ -86,6 +120,8 @@ func NewRouter(ap *app.App) *gin.Engine {
 	salesPublic.POST("", saleHandler.Create)
 
 	customers := protected.Group("/customers")
+	customers.GET("", customerHandler.List)
+	customers.GET("/:id", customerHandler.Get)
 	customers.POST("", customerHandler.Create)
 	customers.POST("/:id/payment", customerHandler.RecordPayment)
 
@@ -118,9 +154,10 @@ func NewRouter(ap *app.App) *gin.Engine {
 	sales.GET("", saleHandler.List)
 	sales.GET("/:id", saleHandler.Get)
 
-	ownerCustomers := ownerRoutes.Group("/customers")
-	ownerCustomers.GET("", customerHandler.List)
-	ownerCustomers.GET("/:id/debts", customerHandler.GetDebtHistory)
+	// GET /customers and GET /customers/:id are already registered in the
+	// protected group (accessible to all auth users). Only the debt history
+	// endpoint stays owner-only.
+	ownerRoutes.GET("/customers/:id/debts", customerHandler.GetDebtHistory)
 
 	notifs := ownerRoutes.Group("/notifications")
 	notifs.GET("", notifHandler.GetInbox)
@@ -133,6 +170,14 @@ func NewRouter(ap *app.App) *gin.Engine {
 	dashHandler := dashboard.NewHandler(dashSvc)
 	ownerRoutes.GET("/dashboard", dashHandler.GetOwnerDashboard)
 	protected.GET("/staff/dashboard", dashHandler.GetStaffDashboard)
+
+	chatRepo := chat.NewRepo(ap.DB)
+	chatSvc := chat.NewService(chatRepo, userRepo, productRepo, saleRepo, ap.Config.GroqAPIKey)
+	chatHandler := chat.NewHandler(chatSvc)
+	chatRoutes := ownerRoutes.Group("/chat")
+	chatRoutes.POST("/message", chatHandler.Send)
+	chatRoutes.GET("/history", chatHandler.GetHistory)
+	chatRoutes.DELETE("/history", chatHandler.Clear)
 
 	return router
 }

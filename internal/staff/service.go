@@ -80,6 +80,13 @@ func (service *Service) Create(ctx context.Context, ownerID string, input Create
 	return service.repo.Create(ctx, staff)
 }
 
+func (service *Service) GetByID(ctx context.Context, id string) (Staff, error) {
+	if strings.TrimSpace(id) == "" {
+		return Staff{}, errors.New("staff id is required")
+	}
+	return service.repo.FindByID(ctx, id)
+}
+
 func (service *Service) GetByIDAndOwner(ctx context.Context, id string, ownerID string) (Staff, error) {
 	if strings.TrimSpace(id) == "" {
 		return Staff{}, errors.New("staff id is required")

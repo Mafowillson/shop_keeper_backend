@@ -78,6 +78,14 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 		return Sale{}, errors.New("user id is required")
 	}
 
+	// If the client omitted shop_id (e.g. staff whose shopId was not in the
+	// login response), derive it from the authenticated staff record.
+	if strings.TrimSpace(input.ShopID) == "" {
+		if st, err := service.staffRepo.FindByID(ctx, userID); err == nil && strings.TrimSpace(st.ShopID) != "" {
+			input.ShopID = st.ShopID
+		}
+	}
+
 	if strings.TrimSpace(input.ShopID) == "" {
 		return Sale{}, errors.New("shop id is required")
 	}
@@ -246,17 +254,40 @@ func (service *Service) GetByIDAndOwner(ctx context.Context, id string, ownerID 
 	if strings.TrimSpace(id) == "" {
 		return Sale{}, errors.New("sale id is required")
 	}
-
 	if strings.TrimSpace(ownerID) == "" {
 		return Sale{}, errors.New("owner id is required")
 	}
 
-	return service.repo.FindByIDAndOwner(ctx, id, ownerID)
+	sale, err := service.repo.FindByID(ctx, id)
+	if err != nil {
+		return Sale{}, err
+	}
+
+	// Verify the sale's shop belongs to the requesting owner so that one owner
+	// cannot read another owner's sale data.
+	shop, err := service.shopRepo.FindByID(ctx, sale.ShopID)
+	if err != nil || shop.OwnerID != ownerID {
+		return Sale{}, mongo.ErrNoDocuments
+	}
+
+	return sale, nil
 }
 
 func (service *Service) ListByOwner(ctx context.Context, ownerID string, shopID string, page, pageSize int) ([]Sale, int64, error) {
 	if strings.TrimSpace(ownerID) == "" {
 		return nil, 0, errors.New("owner id is required")
+	}
+
+	// When a shopID is provided, verify the owner actually owns it before
+	// returning all sales in that shop (which may include staff-recorded sales).
+	if strings.TrimSpace(shopID) != "" {
+		shop, err := service.shopRepo.FindByID(ctx, shopID)
+		if err != nil {
+			return nil, 0, errors.New("shop not found")
+		}
+		if shop.OwnerID != ownerID {
+			return nil, 0, errors.New("unauthorized")
+		}
 	}
 
 	return service.repo.ListByOwner(ctx, ownerID, shopID, page, pageSize)
