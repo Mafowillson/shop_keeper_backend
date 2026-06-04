@@ -15,7 +15,7 @@ import (
 // Defined as an interface here to avoid a circular import between the
 // staff and notification packages.
 type StaffLoginNotifier interface {
-	NotifyStaffLogin(ctx context.Context, ownerID, shopID bson.ObjectID, staffName string)
+	NotifyStaffLogin(ctx context.Context, ownerID bson.ObjectID, shopID string, staffName string)
 }
 
 // ShopLookup provides shop details without importing the shop package directly.
@@ -120,11 +120,9 @@ func (as *AuthService) Login(ctx context.Context, input StaffLoginInput) (StaffA
 	}
 
 	// Fire staff-login notification to the owner (non-blocking).
-	if as.notifier != nil {
-		ownerOID, ownerErr := bson.ObjectIDFromHex(staff.OwnerID)
-		shopOID, shopErr := bson.ObjectIDFromHex(staff.ShopID)
-		if ownerErr == nil && shopErr == nil {
-			as.notifier.NotifyStaffLogin(ctx, ownerOID, shopOID, staff.Name)
+	if as.notifier != nil && strings.TrimSpace(staff.ShopID) != "" {
+		if ownerOID, err := bson.ObjectIDFromHex(staff.OwnerID); err == nil {
+			as.notifier.NotifyStaffLogin(ctx, ownerOID, staff.ShopID, staff.Name)
 		}
 	}
 

@@ -42,9 +42,8 @@ type Notification struct {
 	ID bson.ObjectID `bson:"_id,omitempty" json:"id"`
 
 	// ShopID scopes this notification to one shop.
-	// All notifications belong to a shop so the owner's inbox only shows
-	// their own shop's events.
-	ShopID bson.ObjectID `bson:"shop_id" json:"shop_id"`
+	// Stored as a string UUID to match shop.ID (shops do not use ObjectIDs).
+	ShopID string `bson:"shop_id" json:"shop_id"`
 
 	// OwnerID is the user ID of the shop owner who should receive this.
 	// We store it so we can quickly fetch "all notifications for owner X".
@@ -64,8 +63,11 @@ type Notification struct {
 	// the notification. E.g. {"product_id": "abc123"} for a low_stock alert.
 	Data map[string]string `bson:"data,omitempty" json:"data,omitempty"`
 
-	// Read tracks whether the owner has seen this notification in the inbox.
-	// Default false. Set to true by PATCH /notifications/:id/read.
+	// StaffID is set for staff-targeted notifications (product events).
+	// Empty for owner notifications, which use OwnerID instead.
+	StaffID string `bson:"staff_id,omitempty" json:"staff_id,omitempty"`
+
+	// Read tracks whether the recipient has seen this notification.
 	Read bool `bson:"read" json:"read"`
 
 	// CreatedAt is set once when the notification is first created.
@@ -123,7 +125,7 @@ type UpdatePreferencesRequest struct {
 // CreateNotificationInput is used internally by the service — not exposed via HTTP.
 // Other packages (sale, customer, staff) call notification.Service.Notify() with this.
 type CreateNotificationInput struct {
-	ShopID  bson.ObjectID
+	ShopID  string
 	OwnerID bson.ObjectID
 	Type    NotificationType
 	Title   string

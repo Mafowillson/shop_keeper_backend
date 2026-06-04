@@ -42,6 +42,15 @@ func ownerIDFromCtx(c *gin.Context) (bson.ObjectID, bool) {
 	return id, true
 }
 
+// staffIDFromCtx returns the staff's string UUID from the JWT claim.
+func staffIDFromCtx(c *gin.Context) (string, bool) {
+	id, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+	}
+	return id, ok
+}
+
 // -----------------------------------------------------------------------
 // GET /api/v1/notifications
 // FR-27: owner inbox with optional ?unread=true filter
@@ -206,6 +215,64 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 // POST /api/v1/owner/fcm-token
 // Flutter calls this on every app start to keep the token fresh
 // -----------------------------------------------------------------------
+
+// -----------------------------------------------------------------------
+// GET  /api/v1/staff/notifications
+// PATCH /api/v1/staff/notifications/:id/read
+// PATCH /api/v1/staff/notifications/read-all
+// -----------------------------------------------------------------------
+
+func (h *Handler) GetStaffInbox(c *gin.Context) {
+	staffID, ok := staffIDFromCtx(c)
+	if !ok {
+		return
+	}
+
+	notifications, unreadCount, err := h.service.GetStaffInbox(c.Request.Context(), staffID, 20, 0)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"notifications": notifications,
+		"unread_count":  unreadCount,
+	})
+}
+
+func (h *Handler) MarkStaffRead(c *gin.Context) {
+	staffID, ok := staffIDFromCtx(c)
+	if !ok {
+		return
+	}
+
+	notifID, err := bson.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification id"})
+		return
+	}
+
+	if err := h.service.MarkStaffNotifRead(c.Request.Context(), notifID, staffID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "notification not found or access denied"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) MarkStaffAllRead(c *gin.Context) {
+	staffID, ok := staffIDFromCtx(c)
+	if !ok {
+		return
+	}
+
+	if err := h.service.MarkAllStaffNotifsRead(c.Request.Context(), staffID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
 
 // SaveFCMToken stores the owner's FCM device token.
 //

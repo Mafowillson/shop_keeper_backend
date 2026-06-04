@@ -139,7 +139,8 @@ func (s *Service) isTypeEnabled(prefs *Preferences, t NotificationType) bool {
 //   - currentStock     : shown in the body so the owner knows how many remain
 func (s *Service) NotifyLowStock(
 	ctx context.Context,
-	ownerID, shopID bson.ObjectID,
+	ownerID bson.ObjectID,
+	shopID string,
 	productName, productID string,
 	currentStock int,
 ) {
@@ -173,7 +174,8 @@ func (s *Service) NotifyLowStock(
 //     it already has the total amount. The notification service just fires.
 func (s *Service) NotifyLargeSale(
 	ctx context.Context,
-	ownerID, shopID bson.ObjectID,
+	ownerID bson.ObjectID,
+	shopID string,
 	saleID string,
 	totalAmount float64,
 	staffName string,
@@ -198,7 +200,8 @@ func (s *Service) NotifyLargeSale(
 // Called from customer/service.go after the payment is recorded.
 func (s *Service) NotifyDebtPayment(
 	ctx context.Context,
-	ownerID, shopID bson.ObjectID,
+	ownerID bson.ObjectID,
+	shopID string,
 	customerName, customerID string,
 	amountPaid float64,
 ) {
@@ -222,7 +225,8 @@ func (s *Service) NotifyDebtPayment(
 // Called from staff/auth.go after JWT is issued.
 func (s *Service) NotifyStaffLogin(
 	ctx context.Context,
-	ownerID, shopID bson.ObjectID,
+	ownerID bson.ObjectID,
+	shopID string,
 	staffName string,
 ) {
 	go func() {
@@ -354,10 +358,42 @@ func (s *Service) NotifyStaff(
 	go func() {
 		bgCtx := context.Background()
 
-		tokens, err := s.staffRepo.GetActiveStaffFCMTokens(bgCtx, shopID)
+		// Load all active staff so we can save inbox notifications for every
+		// member, regardless of whether they have an FCM token registered.
+		staffList, err := s.staffRepo.ListByShop(bgCtx, shopID)
 		if err != nil {
-			log.Printf("notification: get staff tokens for shop %s: %v", shopID, err)
+			log.Printf("notification: list staff for shop %s: %v", shopID, err)
 			return
+		}
+		if len(staffList) == 0 {
+			return
+		}
+
+		// Save one inbox notification per staff member.
+		now := time.Now()
+		for _, st := range staffList {
+			n := &Notification{
+				ID:        bson.NewObjectID(),
+				ShopID:    shopID,
+				StaffID:   st.ID,
+				Type:      notifType,
+				Title:     title,
+				Body:      body,
+				Data:      data,
+				Read:      false,
+				CreatedAt: now,
+			}
+			if err := s.repo.Save(bgCtx, n); err != nil {
+				log.Printf("notification: save staff notif for %s: %v", st.ID, err)
+			}
+		}
+
+		// Collect FCM tokens and send push to those who have one.
+		tokens := make([]string, 0, len(staffList))
+		for _, st := range staffList {
+			if st.FCMToken != "" {
+				tokens = append(tokens, st.FCMToken)
+			}
 		}
 		if len(tokens) == 0 {
 			return
@@ -367,11 +403,33 @@ func (s *Service) NotifyStaff(
 		for k, v := range data {
 			payload[k] = v
 		}
-
 		if err := s.fcm.SendToMultiple(bgCtx, tokens, title, body, payload); err != nil {
 			log.Printf("notification: staff multicast for shop %s failed: %v", shopID, err)
 		}
 	}()
+}
+
+// GetStaffInbox returns the staff member's notification inbox with unread count.
+func (s *Service) GetStaffInbox(ctx context.Context, staffID string, limit, skip int64) ([]Notification, int64, error) {
+	notifications, err := s.repo.ListByStaff(ctx, staffID, limit, skip)
+	if err != nil {
+		return nil, 0, err
+	}
+	unread, err := s.repo.CountUnreadByStaff(ctx, staffID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return notifications, unread, nil
+}
+
+// MarkStaffNotifRead marks one staff notification as read.
+func (s *Service) MarkStaffNotifRead(ctx context.Context, notifID bson.ObjectID, staffID string) error {
+	return s.repo.MarkStaffRead(ctx, notifID, staffID)
+}
+
+// MarkAllStaffNotifsRead marks all unread notifications as read for a staff member.
+func (s *Service) MarkAllStaffNotifsRead(ctx context.Context, staffID string) error {
+	return s.repo.MarkAllStaffRead(ctx, staffID)
 }
 
 // GetLargeSaleThreshold is a helper for sale/service.go.

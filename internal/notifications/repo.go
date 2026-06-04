@@ -157,19 +157,88 @@ func (r *Repo) GetPreferences(ctx context.Context, ownerID bson.ObjectID) (*Pref
 }
 
 // UpsertPreferences saves or updates the owner's preferences.
-// Uses MongoDB upsert so it works whether or not a document already exists.
+// Uses $setOnInsert for _id so MongoDB never tries to change the immutable
+// field on an existing document (ReplaceOne with a new _id would error).
 func (r *Repo) UpsertPreferences(ctx context.Context, prefs *Preferences) error {
-	prefs.ID = bson.NewObjectID() // harmless if overwritten by upsert
-
-	opts := options.Replace().SetUpsert(true)
-	_, err := r.preferences.ReplaceOne(
-		ctx,
-		bson.M{"owner_id": prefs.OwnerID},
-		prefs,
-		opts,
-	)
+	update := bson.M{
+		"$set": bson.M{
+			"low_stock":            prefs.LowStock,
+			"large_sale":           prefs.LargeSale,
+			"debt_payment":         prefs.DebtPayment,
+			"staff_login":          prefs.StaffLogin,
+			"large_sale_threshold": prefs.LargeSaleThreshold,
+		},
+		"$setOnInsert": bson.M{
+			"_id":      bson.NewObjectID(),
+			"owner_id": prefs.OwnerID,
+		},
+	}
+	opts := options.UpdateOne().SetUpsert(true)
+	_, err := r.preferences.UpdateOne(ctx, bson.M{"owner_id": prefs.OwnerID}, update, opts)
 	if err != nil {
 		return fmt.Errorf("notification repo: upsert preferences: %w", err)
+	}
+	return nil
+}
+
+// -----------------------------------------------------------------------
+// Staff inbox helpers
+// -----------------------------------------------------------------------
+
+// ListByStaff returns the most-recent notifications for a staff member.
+func (r *Repo) ListByStaff(ctx context.Context, staffID string, limit, skip int64) ([]Notification, error) {
+	opts := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: -1}}).
+		SetLimit(limit).
+		SetSkip(skip)
+
+	cursor, err := r.notifications.Find(ctx, bson.M{"staff_id": staffID}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("notification repo: list by staff: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var results []Notification
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, fmt.Errorf("notification repo: decode staff list: %w", err)
+	}
+	return results, nil
+}
+
+// CountUnreadByStaff returns how many unread notifications a staff member has.
+func (r *Repo) CountUnreadByStaff(ctx context.Context, staffID string) (int64, error) {
+	count, err := r.notifications.CountDocuments(ctx, bson.M{"staff_id": staffID, "read": false})
+	if err != nil {
+		return 0, fmt.Errorf("notification repo: count unread staff: %w", err)
+	}
+	return count, nil
+}
+
+// MarkStaffRead sets read=true on one staff notification.
+func (r *Repo) MarkStaffRead(ctx context.Context, id bson.ObjectID, staffID string) error {
+	result, err := r.notifications.UpdateOne(
+		ctx,
+		bson.M{"_id": id, "staff_id": staffID},
+		bson.M{"$set": bson.M{"read": true}},
+	)
+	if err != nil {
+		return fmt.Errorf("notification repo: mark staff read: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("notification repo: not found or access denied")
+	}
+	return nil
+}
+
+// MarkAllStaffRead marks every unread notification as read for a staff member.
+func (r *Repo) MarkAllStaffRead(ctx context.Context, staffID string) error {
+	_, err := r.notifications.UpdateMany(
+		ctx,
+		bson.M{"staff_id": staffID, "read": false},
+		bson.M{"$set": bson.M{"read": true}},
+	)
+	if err != nil {
+		return fmt.Errorf("notification repo: mark all staff read: %w", err)
 	}
 	return nil
 }

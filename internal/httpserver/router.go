@@ -111,6 +111,12 @@ func NewRouter(ap *app.App) *gin.Engine {
 	protected.POST("/staff/fcm-token", staffHandler.SaveFCMToken)
 	protected.GET("/staff/my-shop", staffHandler.GetMyShop)
 
+	// Staff notification inbox — accessible to all authenticated users (staff use their own ID).
+	staffNotifs := protected.Group("/staff/notifications")
+	staffNotifs.GET("", notifHandler.GetStaffInbox)
+	staffNotifs.PATCH("/:id/read", notifHandler.MarkStaffRead)
+	staffNotifs.PATCH("/read-all", notifHandler.MarkStaffAllRead)
+
 	// Accessible to both staff and owner
 	products := protected.Group("/products")
 	products.GET("", productHandler.List)
