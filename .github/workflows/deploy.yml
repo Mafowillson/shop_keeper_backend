@@ -1,0 +1,48 @@
+name: Build and Deploy ShopKeeper API
+ 
+# Trigger: runs on every push to the main branch
+on:
+  push:
+    branches: [main]
+ 
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      # 1. Check out your source code
+      - name: Checkout code
+        uses: actions/checkout@v4
+ 
+      # 2. Log in to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+ 
+      # 3. Build the image and push to Docker Hub
+      #    Tagged as both 'latest' and the commit SHA
+      #    so you can roll back to any specific commit.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/shopkeeper-api:latest
+            ${{ secrets.DOCKER_USERNAME }}/shopkeeper-api:${{ github.sha }}
+ 
+      # 4. SSH into the VPS and restart the container
+      #    .env already exists on the VPS — pipeline never touches it.
+      - name: Deploy to Contabo VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/shopkeeper
+            docker compose pull
+            docker compose up -d --force-recreate
+            docker image prune -f

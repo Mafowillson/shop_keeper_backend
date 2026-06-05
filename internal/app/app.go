@@ -35,7 +35,7 @@ func New(ctx context.Context) (*App, error) {
 		return nil, err
 	}
 
-	fcmClient, err := fcm.NewClient(ctx, cfg.FirebaseCredentialsFile)
+	fcmClient, err := fcm.NewClient(ctx, cfg.FirebaseCredentialsFile, cfg.FirebaseProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init firebase: %w", err)
 	}

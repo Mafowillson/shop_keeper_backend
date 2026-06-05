@@ -16,6 +16,7 @@ type Config struct {
 	JWTSecret               string
 	JWTRefreshSecret        string
 	FirebaseCredentialsFile string
+	FirebaseProjectID       string
 
 	GroqAPIKey string
 
@@ -37,6 +38,7 @@ func Load() (Config, error) {
 		JWTSecret:               strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		JWTRefreshSecret:        strings.TrimSpace(os.Getenv("JWT_REFRESH_SECRET")),
 		FirebaseCredentialsFile: strings.TrimSpace(os.Getenv("FIREBASE_CREDENTIALS_FILE")),
+		FirebaseProjectID:       strings.TrimSpace(os.Getenv("FIREBASE_PROJECT_ID")),
 		GroqAPIKey:              strings.TrimSpace(os.Getenv("GROQ_API_KEY")),
 		SMTPHost:                strings.TrimSpace(os.Getenv("SMTP_HOST")),
 		SMTPUsername:            strings.TrimSpace(os.Getenv("SMTP_USER")),
@@ -68,6 +70,9 @@ func Load() (Config, error) {
 	}
 	if cfg.FirebaseCredentialsFile == "" {
 		return Config{}, fmt.Errorf("Missing firebase credentials file")
+	}
+	if cfg.FirebaseProjectID == "" {
+		return Config{}, fmt.Errorf("Missing firebase project ID")
 	}
 
 	return cfg, nil

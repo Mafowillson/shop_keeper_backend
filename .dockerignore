@@ -1,0 +1,9 @@
+# .dockerignore
+.git
+.gitignore
+.air.toml
+tmp/
+*.exe
+*.exe~
+.env
+secrets/

@@ -23,13 +23,10 @@ type Client struct {
 //  2. You store that file's path in your .env as FIREBASE_CREDENTIALS_FILE.
 //  3. This function reads that file, authenticates with Google, and returns
 //     a messaging client ready to push notifications to any device.
-func NewClient(ctx context.Context, credentialsFile string) (*Client, error) {
-	// Tell the SDK where your service account key lives.
+func NewClient(ctx context.Context, credentialsFile, projectID string) (*Client, error) {
 	opt := option.WithCredentialsFile(credentialsFile)
 
-	// firebase.NewApp creates the root Firebase application instance.
-	// nil config is fine — we only need Cloud Messaging, not Firestore/Auth.
-	app, err := firebase.NewApp(ctx, nil, opt)
+	app, err := firebase.NewApp(ctx, &firebase.Config{ProjectID: projectID}, opt)
 	if err != nil {
 		return nil, fmt.Errorf("fcm: failed to init firebase app: %w", err)
 	}

@@ -3,6 +3,7 @@ package email
 import (
 	"fmt"
 	"log"
+	"net/mail"
 	"net/smtp"
 	"strings"
 )
@@ -75,7 +76,14 @@ func (s *Service) sendMail(to, subject, body string) error {
 	msg.WriteString("\r\n")
 	msg.WriteString(body)
 
+	// smtp.SendMail requires a bare email address as the envelope sender.
+	// s.cfg.From may be "Display Name <addr@host>" so we extract just the address.
+	envelopeFrom := s.cfg.From
+	if parsed, err := mail.ParseAddress(s.cfg.From); err == nil {
+		envelopeFrom = parsed.Address
+	}
+
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 	auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
-	return smtp.SendMail(addr, auth, s.cfg.From, []string{to}, []byte(msg.String()))
+	return smtp.SendMail(addr, auth, envelopeFrom, []string{to}, []byte(msg.String()))
 }
