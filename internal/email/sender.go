@@ -1,11 +1,14 @@
 package email
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/mail"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -67,21 +70,32 @@ This code expires in 15 minutes. If you did not request a password reset, please
 	return s.sendMail(toEmail, subject, body)
 }
 
-func (s *Service) sendMail(to, subject, body string) error {
-	var msg strings.Builder
-	msg.WriteString("From: " + s.cfg.From + "\r\n")
-	msg.WriteString("To: " + to + "\r\n")
-	msg.WriteString("Subject: " + subject + "\r\n")
-	msg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
-	msg.WriteString("\r\n")
-	msg.WriteString(body)
+func messageID(domain string) string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("<%s@%s>", hex.EncodeToString(b), domain)
+}
 
-	// smtp.SendMail requires a bare email address as the envelope sender.
-	// s.cfg.From may be "Display Name <addr@host>" so we extract just the address.
+func (s *Service) sendMail(to, subject, body string) error {
 	envelopeFrom := s.cfg.From
 	if parsed, err := mail.ParseAddress(s.cfg.From); err == nil {
 		envelopeFrom = parsed.Address
 	}
+	domain := "shopkeeper.cm"
+	if idx := strings.Index(envelopeFrom, "@"); idx != -1 {
+		domain = envelopeFrom[idx+1:]
+	}
+
+	var msg strings.Builder
+	msg.WriteString("From: " + s.cfg.From + "\r\n")
+	msg.WriteString("To: " + to + "\r\n")
+	msg.WriteString("Subject: " + subject + "\r\n")
+	msg.WriteString("Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n")
+	msg.WriteString("Message-ID: " + messageID(domain) + "\r\n")
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+	msg.WriteString("\r\n")
+	msg.WriteString(body)
 
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 	auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
