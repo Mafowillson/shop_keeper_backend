@@ -120,8 +120,8 @@ func (service *Service) Create(ctx context.Context, input CreateProductInput, ow
 	}
 
 	service.notifSvc.NotifyStaff(ctx, input.ShopID,
-		"🆕 Nouveau produit",
-		fmt.Sprintf("%s a été ajouté au catalogue.", p.Name),
+		"🆕 New Product",
+		fmt.Sprintf("%s has been added to the catalogue.", p.Name),
 		notification.TypeProductAdded,
 		map[string]string{"product_id": created.ID},
 	)
@@ -204,12 +204,12 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 		return ProductResponse{}, err
 	}
 
-	notifBody := fmt.Sprintf("%s a été mis à jour.", updated.Name)
+	notifBody := fmt.Sprintf("%s has been updated.", updated.Name)
 	if len(input.Units) > 0 {
-		notifBody = fmt.Sprintf("Le prix de %s a été modifié.", updated.Name)
+		notifBody = fmt.Sprintf("The price of %s has been updated.", updated.Name)
 	}
 	service.notifSvc.NotifyStaff(ctx, updated.ShopID,
-		"✏️ Produit mis à jour",
+		"✏️ Product Updated",
 		notifBody,
 		notification.TypeProductUpdated,
 		map[string]string{"product_id": updated.ID},
@@ -237,8 +237,8 @@ func (service *Service) Delete(ctx context.Context, id string, ownerID string) e
 	}
 
 	service.notifSvc.NotifyStaff(ctx, p.ShopID,
-		"🗑️ Produit retiré",
-		fmt.Sprintf("%s a été retiré du catalogue.", p.Name),
+		"🗑️ Product Removed",
+		fmt.Sprintf("%s has been removed from the catalogue.", p.Name),
 		notification.TypeProductDeleted,
 		map[string]string{"product_id": p.ID},
 	)

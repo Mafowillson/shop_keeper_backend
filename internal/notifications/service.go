@@ -154,8 +154,8 @@ func (s *Service) NotifyLowStock(
 			ShopID:  shopID,
 			OwnerID: ownerID,
 			Type:    TypeLowStock,
-			Title:   "⚠️ Stock faible",
-			Body:    fmt.Sprintf("%s n'a plus que %d unité(s) en stock.", productName, currentStock),
+			Title:   "⚠️ Low Stock",
+			Body:    fmt.Sprintf("%s only has %d unit(s) left in stock.", productName, currentStock),
 			Data: map[string]string{
 				"product_id":    productID,
 				"current_stock": fmt.Sprintf("%d", currentStock),
@@ -186,8 +186,8 @@ func (s *Service) NotifyLargeSale(
 			ShopID:  shopID,
 			OwnerID: ownerID,
 			Type:    TypeLargeSale,
-			Title:   "💰 Grande vente enregistrée",
-			Body:    fmt.Sprintf("%s a enregistré une vente de %.0f FCFA.", staffName, totalAmount),
+			Title:   "💰 Large Sale Recorded",
+			Body:    fmt.Sprintf("%s recorded a sale of %.0f FCFA.", staffName, totalAmount),
 			Data: map[string]string{
 				"sale_id":      saleID,
 				"total_amount": fmt.Sprintf("%.0f", totalAmount),
@@ -211,8 +211,8 @@ func (s *Service) NotifyDebtPayment(
 			ShopID:  shopID,
 			OwnerID: ownerID,
 			Type:    TypeDebtPayment,
-			Title:   "💳 Paiement de dette reçu",
-			Body:    fmt.Sprintf("%s a payé %.0f FCFA.", customerName, amountPaid),
+			Title:   "💳 Debt Payment Received",
+			Body:    fmt.Sprintf("%s paid %.0f FCFA.", customerName, amountPaid),
 			Data: map[string]string{
 				"customer_id": customerID,
 				"amount_paid": fmt.Sprintf("%.0f", amountPaid),
@@ -235,8 +235,8 @@ func (s *Service) NotifyStaffLogin(
 			ShopID:  shopID,
 			OwnerID: ownerID,
 			Type:    TypeStaffLogin,
-			Title:   "👤 Connexion du personnel",
-			Body:    fmt.Sprintf("%s vient de se connecter.", staffName),
+			Title:   "👤 Staff Login",
+			Body:    fmt.Sprintf("%s just logged in.", staffName),
 			Data: map[string]string{
 				"staff_name": staffName,
 			},
