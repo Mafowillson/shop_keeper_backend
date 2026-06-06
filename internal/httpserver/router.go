@@ -7,6 +7,7 @@ import (
 	"shop_keeper_backend/internal/chat"
 	"shop_keeper_backend/internal/customer"
 	"shop_keeper_backend/internal/dashboard"
+	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/middleware"
 	notification "shop_keeper_backend/internal/notifications"
 	"shop_keeper_backend/internal/product"
@@ -47,6 +48,11 @@ func NewRouter(ap *app.App) *gin.Engine {
 	router.GET("/health", health)
 
 	userRepo := user.NewRepo(ap.DB)
+
+	// i18n middleware runs on every request — reads Accept-Language header,
+	// sets locale in context, and asynchronously saves it for authenticated users.
+	router.Use(i18n.Middleware(userRepo))
+
 	userSvc := user.NewService(userRepo, ap.EmailService, ap.Config.JWTSecret, ap.Config.JWTRefreshSecret)
 	userHandler := user.NewHandler(userSvc)
 
@@ -65,7 +71,7 @@ func NewRouter(ap *app.App) *gin.Engine {
 	// notifSvc is created here (before staffAuthSvc) so it can be passed to
 	// staffAuthSvc for the staff-login notification.
 	notifRepo := notification.NewRepo(ap.DB)
-	notifSvc := notification.NewService(notifRepo, ap.FCMClient, staffRepo)
+	notifSvc := notification.NewService(notifRepo, ap.FCMClient, staffRepo, userRepo)
 
 	staffAuthSvc := staff.NewAuthService(
 		staffRepo,

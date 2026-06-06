@@ -3,6 +3,7 @@ package user
 import (
 	"net/http"
 
+	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -17,9 +18,11 @@ func NewHandler(svc *Service) *Handler {
 }
 
 func (h *Handler) Register(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	var input RegisterInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 	out, err := h.service.Register(c.Request.Context(), input)
@@ -31,37 +34,43 @@ func (h *Handler) Register(c *gin.Context) {
 }
 
 func (h *Handler) Login(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	var input LoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 	out, err := h.service.Login(c.Request.Context(), input)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidCredentials})
 		return
 	}
 	c.JSON(http.StatusOK, out)
 }
 
 func (h *Handler) Refresh(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	var input RefreshInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 	out, err := h.service.Refresh(c.Request.Context(), input)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidToken})
 		return
 	}
 	c.JSON(http.StatusOK, out)
 }
 
 func (h *Handler) Logout(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	var input LogoutInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 	if err := h.service.Logout(c.Request.Context(), input); err != nil {
@@ -71,17 +80,18 @@ func (h *Handler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// VerifyEmail handles POST /api/v1/auth/verify-email  (JWT required)
 func (h *Handler) VerifyEmail(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
 	var input VerifyEmailInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 
@@ -94,11 +104,12 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
-// ResendVerificationCode handles POST /api/v1/auth/resend-verification  (JWT required)
 func (h *Handler) ResendVerificationCode(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
@@ -107,28 +118,30 @@ func (h *Handler) ResendVerificationCode(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Verification code sent"})
+	c.JSON(http.StatusOK, gin.H{"message": msgs.VerificationCodeSent})
 }
 
-// ForgotPassword handles POST /api/v1/auth/forgot-password  (public — no JWT needed)
-// Always returns 200 to prevent email-enumeration attacks.
+// ForgotPassword always returns 200 to prevent email-enumeration attacks.
 func (h *Handler) ForgotPassword(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	var input ForgotPasswordInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 
 	_ = h.service.ForgotPassword(c.Request.Context(), input)
 
-	c.JSON(http.StatusOK, gin.H{"message": "If that email is registered, a reset code has been sent."})
+	c.JSON(http.StatusOK, gin.H{"message": msgs.ForgotPasswordSent})
 }
 
-// ResetPassword handles POST /api/v1/auth/reset-password  (public — no JWT needed)
 func (h *Handler) ResetPassword(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	var input ResetPasswordInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 
@@ -137,5 +150,5 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully. Please log in with your new password."})
+	c.JSON(http.StatusOK, gin.H{"message": msgs.PasswordResetSuccess})
 }

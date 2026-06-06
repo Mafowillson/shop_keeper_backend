@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"shop_keeper_backend/internal/api"
+	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -19,15 +20,17 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) Create(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	var input CreateSaleInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
@@ -41,17 +44,19 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 func (h *Handler) Get(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	id := c.Param("id")
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
 	sale, err := h.service.GetByIDAndOwner(c.Request.Context(), id, userID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Sale not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": msgs.SaleNotFound})
 			return
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -62,22 +67,24 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 func (h *Handler) List(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	shopID := c.Query("shop_id")
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		api.Unauthorized(c, "Unauthorized")
+		api.Unauthorized(c, msgs.Unauthorized)
 		return
 	}
 
 	page, pageSize, err := api.ParsePagination(c)
 	if err != nil {
-		api.BadRequest(c, err.Error())
+		api.BadRequest(c, msgs.BadRequest)
 		return
 	}
 
 	sales, total, err := h.service.ListByOwner(c.Request.Context(), userID, shopID, page, pageSize)
 	if err != nil {
-		api.InternalError(c, err.Error())
+		api.InternalError(c, msgs.InternalError)
 		return
 	}
 

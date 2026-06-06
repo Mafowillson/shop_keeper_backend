@@ -35,6 +35,10 @@ type User struct {
 	PasswordResetExpiry  time.Time `bson:"password_reset_expiry,omitempty"  json:"-"`
 	PasswordResetSentAt  time.Time `bson:"password_reset_sent_at,omitempty" json:"-"`
 
+	// Locale preference — "fr" or "en". Used to localise push notifications
+	// that are sent outside of a request context (background goroutines).
+	PreferredLocale string `bson:"preferred_locale,omitempty" json:"preferred_locale,omitempty"`
+
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
 }

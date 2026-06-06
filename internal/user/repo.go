@@ -143,6 +143,20 @@ func (r *Repo) SavePasswordResetCode(ctx context.Context, userID, code string, e
 	return err
 }
 
+// SaveLocale persists the user's preferred locale ("fr" or "en").
+// Implements i18n.LocaleSaver so the i18n middleware can call it without
+// importing the user package directly.
+func (r *Repo) SaveLocale(ctx context.Context, userID, locale string) error {
+	oid, err := bson.ObjectIDFromHex(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{
+		"$set": bson.M{"preferred_locale": locale, "updated_at": time.Now().UTC()},
+	})
+	return err
+}
+
 func (r *Repo) ResetPassword(ctx context.Context, userID, newPasswordHash string) error {
 	oid, err := bson.ObjectIDFromHex(userID)
 	if err != nil {

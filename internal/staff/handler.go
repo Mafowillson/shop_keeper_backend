@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"shop_keeper_backend/internal/api"
+	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -21,9 +22,11 @@ func NewHandler(service *Service, shopLookup ShopLookup) *Handler {
 }
 
 func (h *Handler) GetMyShop(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
@@ -48,19 +51,20 @@ func (h *Handler) getUserID(c *gin.Context) (string, bool) {
 }
 
 func (h *Handler) Create(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
 	var input CreateStaffInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 
-	// Auto-assign the owner's shop if the caller didn't specify one.
 	if strings.TrimSpace(input.ShopID) == "" && h.shopLookup != nil {
 		if shopID, err := h.shopLookup.GetOwnerShopID(c.Request.Context(), userID); err == nil {
 			input.ShopID = shopID
@@ -77,21 +81,23 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 func (h *Handler) List(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		api.Unauthorized(c, "Unauthorized")
+		api.Unauthorized(c, msgs.Unauthorized)
 		return
 	}
 
 	page, pageSize, err := api.ParsePagination(c)
 	if err != nil {
-		api.BadRequest(c, err.Error())
+		api.BadRequest(c, msgs.BadRequest)
 		return
 	}
 
 	staffList, total, err := h.service.ListByOwner(c.Request.Context(), userID, page, pageSize)
 	if err != nil {
-		api.InternalError(c, err.Error())
+		api.InternalError(c, msgs.InternalError)
 		return
 	}
 
@@ -104,9 +110,11 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 func (h *Handler) Get(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
@@ -114,10 +122,10 @@ func (h *Handler) Get(c *gin.Context) {
 	staff, err := h.service.GetByIDAndOwner(c.Request.Context(), id, userID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Staff not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": msgs.StaffNotFound})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
 	}
 
@@ -125,23 +133,25 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 func (h *Handler) Update(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
 	id := c.Param("id")
 	var input UpdateStaffInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid json body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.InvalidJSON})
 		return
 	}
 
 	staff, err := h.service.Update(c.Request.Context(), id, userID, input)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Staff not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": msgs.StaffNotFound})
 			return
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -152,29 +162,33 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 func (h *Handler) Delete(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
 	id := c.Param("id")
 	if err := h.service.Delete(c.Request.Context(), id, userID); err != nil {
 		if err == mongo.ErrNoDocuments {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Staff not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": msgs.StaffNotFound})
 			return
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, gin.H{"message": msgs.Deleted})
 }
 
 func (h *Handler) SaveFCMToken(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
@@ -182,22 +196,24 @@ func (h *Handler) SaveFCMToken(c *gin.Context) {
 		Token string `json:"token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.MissingRequiredField})
 		return
 	}
 
 	if err := h.service.SaveFCMToken(c.Request.Context(), userID, body.Token); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "FCM token saved"})
+	c.JSON(http.StatusOK, gin.H{"message": msgs.FCMTokenSaved})
 }
 
 func (h *Handler) GetCredentials(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := h.getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
@@ -205,10 +221,10 @@ func (h *Handler) GetCredentials(c *gin.Context) {
 	credentials, err := h.service.GetCredentials(c.Request.Context(), id, userID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Staff not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": msgs.StaffNotFound})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
 	}
 

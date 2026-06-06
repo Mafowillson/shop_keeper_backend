@@ -2,25 +2,27 @@ package middleware
 
 import (
 	"net/http"
+	"shop_keeper_backend/internal/i18n"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-// abc -> only admin can access -> 2. level check -> auth ? -> admin requirement
 func RequireOwner() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		msgs := i18n.FromCtx(ctx)
+
 		role, ok := GetRole(ctx)
 		if !ok {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Unauthorized",
+				"error": msgs.Unauthorized,
 			})
 			return
 		}
 
 		if !strings.EqualFold(role, "owner") {
 			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "This route can only be accessed by owner",
+				"error": msgs.ForbiddenRole,
 			})
 			return
 		}
@@ -30,17 +32,19 @@ func RequireOwner() gin.HandlerFunc {
 
 func RequireStaff() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		msgs := i18n.FromCtx(ctx)
+
 		role, ok := GetRole(ctx)
 		if !ok {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Unauthorized",
+				"error": msgs.Unauthorized,
 			})
 			return
 		}
 
 		if !strings.EqualFold(role, "staff") {
 			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "This route can only be accessed by staff",
+				"error": msgs.ForbiddenRole,
 			})
 			return
 		}

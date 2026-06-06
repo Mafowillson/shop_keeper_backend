@@ -39,6 +39,6 @@ func InternalError(c *gin.Context, message string) {
 	JSONError(c, http.StatusInternalServerError, message, "internal_error", nil)
 }
 
-func InvalidJSON(c *gin.Context) {
-	JSONError(c, http.StatusBadRequest, "Invalid JSON body", "invalid_json", nil)
+func InvalidJSON(c *gin.Context, message string) {
+	JSONError(c, http.StatusBadRequest, message, "invalid_json", nil)
 }
