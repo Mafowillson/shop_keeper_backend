@@ -14,6 +14,7 @@ import (
 	"shop_keeper_backend/internal/sale"
 	"shop_keeper_backend/internal/shop"
 	"shop_keeper_backend/internal/staff"
+	syncsvc "shop_keeper_backend/internal/sync"
 	"shop_keeper_backend/internal/user"
 
 	"github.com/gin-gonic/gin"
@@ -122,6 +123,12 @@ func NewRouter(ap *app.App) *gin.Engine {
 	staffNotifs.GET("", notifHandler.GetStaffInbox)
 	staffNotifs.PATCH("/:id/read", notifHandler.MarkStaffRead)
 	staffNotifs.PATCH("/read-all", notifHandler.MarkStaffAllRead)
+
+	// ── Sync endpoint (staff + owner) ──────────────────────────────────────
+	syncRepo := syncsvc.NewRepo(ap.DB)
+	syncSvc := syncsvc.NewService(syncRepo, saleSvc, customerSvc, productSvc)
+	syncHandler := syncsvc.NewHandler(syncSvc)
+	protected.POST("/sync/push", syncHandler.Push)
 
 	// Accessible to both staff and owner
 	products := protected.Group("/products")
