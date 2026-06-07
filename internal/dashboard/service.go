@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"shop_keeper_backend/internal/customer"
+	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/product"
 	"shop_keeper_backend/internal/sale"
 	"shop_keeper_backend/internal/shop"
@@ -41,7 +42,7 @@ func NewService(
 }
 
 // GetOwnerStats builds the owner dashboard response for the given ownerID.
-func (s *Service) GetOwnerStats(ctx context.Context, ownerID string) (OwnerDashboardResponse, error) {
+func (s *Service) GetOwnerStats(ctx context.Context, ownerID string, locale string) (OwnerDashboardResponse, error) {
 	u, err := s.userRepo.FindByID(ctx, ownerID)
 	if err != nil {
 		return OwnerDashboardResponse{}, fmt.Errorf("dashboard: find owner: %w", err)
@@ -81,15 +82,16 @@ func (s *Service) GetOwnerStats(ctx context.Context, ownerID string) (OwnerDashb
 	if err != nil {
 		return OwnerDashboardResponse{}, err
 	}
+	msgs := i18n.Get(locale)
 	feed := make([]ActivityItem, 0, len(recentSales))
 	for _, sale := range recentSales {
-		subtitle := fmt.Sprintf("FCFA %.0f • %d items", sale.TotalAmount, len(sale.Items))
+		subtitle := fmt.Sprintf(msgs.ActivitySaleSubtitleFmt, sale.TotalAmount, len(sale.Items))
 		if sale.IsCredit {
-			subtitle += " • credit"
+			subtitle += msgs.ActivityCreditSuffix
 		}
 		feed = append(feed, ActivityItem{
 			ID:        sale.ID,
-			Title:     "Sale recorded",
+			Title:     msgs.ActivitySaleTitle,
 			Subtitle:  subtitle,
 			Timestamp: sale.CreatedAt,
 			Type:      "sale",

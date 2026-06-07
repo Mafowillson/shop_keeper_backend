@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"shop_keeper_backend/internal/i18n"
 	notification "shop_keeper_backend/internal/notifications"
 	"shop_keeper_backend/internal/shop"
 	"shop_keeper_backend/internal/validation"
@@ -67,7 +68,7 @@ func (service *Service) assertProductOwner(ctx context.Context, id string, owner
 	return p, nil
 }
 
-func (service *Service) Create(ctx context.Context, input CreateProductInput, ownerID string) (ProductResponse, error) {
+func (service *Service) Create(ctx context.Context, input CreateProductInput, ownerID string, locale string) (ProductResponse, error) {
 	if strings.TrimSpace(ownerID) == "" {
 		return ProductResponse{}, errors.New("owner id is required")
 	}
@@ -119,9 +120,10 @@ func (service *Service) Create(ctx context.Context, input CreateProductInput, ow
 		return ProductResponse{}, err
 	}
 
+	msgs := i18n.Get(locale)
 	service.notifSvc.NotifyStaff(ctx, input.ShopID,
-		"🆕 New Product",
-		fmt.Sprintf("%s has been added to the catalogue.", p.Name),
+		msgs.NotifProductAddedTitle,
+		fmt.Sprintf(msgs.NotifProductAddedBodyFmt, p.Name),
 		notification.TypeProductAdded,
 		map[string]string{"product_id": created.ID},
 	)
@@ -156,7 +158,7 @@ func (service *Service) List(ctx context.Context, shopID, category, search strin
 	return responses, total, nil
 }
 
-func (service *Service) Update(ctx context.Context, id string, input UpdateProductInput, ownerID string) (ProductResponse, error) {
+func (service *Service) Update(ctx context.Context, id string, input UpdateProductInput, ownerID string, locale string) (ProductResponse, error) {
 	if strings.TrimSpace(id) == "" {
 		return ProductResponse{}, errors.New("product id is required")
 	}
@@ -204,12 +206,13 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 		return ProductResponse{}, err
 	}
 
-	notifBody := fmt.Sprintf("%s has been updated.", updated.Name)
+	msgs := i18n.Get(locale)
+	notifBody := fmt.Sprintf(msgs.NotifProductUpdatedBodyFmt, updated.Name)
 	if len(input.Units) > 0 {
-		notifBody = fmt.Sprintf("The price of %s has been updated.", updated.Name)
+		notifBody = fmt.Sprintf(msgs.NotifProductPriceUpdatedFmt, updated.Name)
 	}
 	service.notifSvc.NotifyStaff(ctx, updated.ShopID,
-		"✏️ Product Updated",
+		msgs.NotifProductUpdatedTitle,
 		notifBody,
 		notification.TypeProductUpdated,
 		map[string]string{"product_id": updated.ID},
@@ -218,7 +221,7 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 	return updated.ToResponse(), nil
 }
 
-func (service *Service) Delete(ctx context.Context, id string, ownerID string) error {
+func (service *Service) Delete(ctx context.Context, id string, ownerID string, locale string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.New("product id is required")
 	}
@@ -236,9 +239,10 @@ func (service *Service) Delete(ctx context.Context, id string, ownerID string) e
 		return err
 	}
 
+	msgs := i18n.Get(locale)
 	service.notifSvc.NotifyStaff(ctx, p.ShopID,
-		"🗑️ Product Removed",
-		fmt.Sprintf("%s has been removed from the catalogue.", p.Name),
+		msgs.NotifProductDeletedTitle,
+		fmt.Sprintf(msgs.NotifProductDeletedBodyFmt, p.Name),
 		notification.TypeProductDeleted,
 		map[string]string{"product_id": p.ID},
 	)

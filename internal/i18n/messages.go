@@ -103,6 +103,25 @@ type Messages struct {
 	ForgotPasswordSent    string
 	PasswordResetSuccess  string
 	VerificationCodeSent  string
+
+	// ── Dashboard activity feed ───────────────────────────────────────────────
+	// ActivitySaleSubtitleFmt args: totalAmount (float64), itemCount (int)
+	ActivitySaleTitle       string
+	ActivitySaleSubtitleFmt string
+	ActivityCreditSuffix    string
+
+	// ── Product push notifications ────────────────────────────────────────────
+	// Format string args noted inline.
+	NotifProductAddedTitle      string
+	NotifProductAddedBodyFmt    string // args: productName
+	NotifProductUpdatedTitle    string
+	NotifProductUpdatedBodyFmt  string // args: productName
+	NotifProductPriceUpdatedFmt string // args: productName
+	NotifProductDeletedTitle    string
+	NotifProductDeletedBodyFmt  string // args: productName
+
+	// ── Chat ─────────────────────────────────────────────────────────────────
+	ChatHistoryCleared string
 }
 
 // EN contains all English strings.
@@ -203,6 +222,23 @@ var EN = Messages{
 	ForgotPasswordSent:   "If that email is registered, a reset code has been sent.",
 	PasswordResetSuccess: "Password reset successfully. Please log in with your new password.",
 	VerificationCodeSent: "Verification code sent.",
+
+	// Dashboard activity feed
+	ActivitySaleTitle:       "Sale recorded",
+	ActivitySaleSubtitleFmt: "FCFA %.0f • %d item(s)",
+	ActivityCreditSuffix:    " • credit",
+
+	// Product push notifications
+	NotifProductAddedTitle:      "🆕 New Product",
+	NotifProductAddedBodyFmt:    "%s has been added to the catalogue.",
+	NotifProductUpdatedTitle:    "✏️ Product Updated",
+	NotifProductUpdatedBodyFmt:  "%s has been updated.",
+	NotifProductPriceUpdatedFmt: "The price of %s has been updated.",
+	NotifProductDeletedTitle:    "🗑️ Product Removed",
+	NotifProductDeletedBodyFmt:  "%s has been removed from the catalogue.",
+
+	// Chat
+	ChatHistoryCleared: "Chat history cleared.",
 }
 
 // FR contains all French strings (default fallback for Cameroon).
@@ -303,6 +339,23 @@ var FR = Messages{
 	ForgotPasswordSent:   "Si cet e-mail est enregistré, un code de réinitialisation a été envoyé.",
 	PasswordResetSuccess: "Mot de passe réinitialisé avec succès. Connectez-vous avec votre nouveau mot de passe.",
 	VerificationCodeSent: "Code de vérification envoyé.",
+
+	// Dashboard activity feed
+	ActivitySaleTitle:       "Vente enregistrée",
+	ActivitySaleSubtitleFmt: "FCFA %.0f • %d article(s)",
+	ActivityCreditSuffix:    " • crédit",
+
+	// Product push notifications
+	NotifProductAddedTitle:      "🆕 Nouveau produit",
+	NotifProductAddedBodyFmt:    "%s a été ajouté au catalogue.",
+	NotifProductUpdatedTitle:    "✏️ Produit mis à jour",
+	NotifProductUpdatedBodyFmt:  "%s a été mis à jour.",
+	NotifProductPriceUpdatedFmt: "Le prix de %s a été mis à jour.",
+	NotifProductDeletedTitle:    "🗑️ Produit supprimé",
+	NotifProductDeletedBodyFmt:  "%s a été retiré du catalogue.",
+
+	// Chat
+	ChatHistoryCleared: "Historique de conversation effacé.",
 }
 
 // Get returns the Messages for the given locale. Defaults to FR.

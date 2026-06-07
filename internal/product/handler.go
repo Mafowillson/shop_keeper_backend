@@ -34,7 +34,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	product, err := h.service.Create(c.Request.Context(), input, userID)
+	product, err := h.service.Create(c.Request.Context(), input, userID, i18n.LocaleFromCtx(c))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -98,7 +98,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	product, err := h.service.Update(c.Request.Context(), id, input, userID)
+	product, err := h.service.Update(c.Request.Context(), id, input, userID, i18n.LocaleFromCtx(c))
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			c.JSON(http.StatusNotFound, gin.H{"error": msgs.ProductNotFound})
@@ -121,7 +121,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Delete(c.Request.Context(), id, userID); err != nil {
+	if err := h.service.Delete(c.Request.Context(), id, userID, i18n.LocaleFromCtx(c)); err != nil {
 		if err == mongo.ErrNoDocuments {
 			c.JSON(http.StatusNotFound, gin.H{"error": msgs.ProductNotFound})
 			return

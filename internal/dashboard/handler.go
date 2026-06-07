@@ -3,6 +3,7 @@ package dashboard
 import (
 	"net/http"
 
+	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -18,15 +19,18 @@ func NewHandler(service *Service) *Handler {
 
 // GET /api/v1/dashboard  (owner-only)
 func (h *Handler) GetOwnerDashboard(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+	locale := i18n.LocaleFromCtx(c)
+
 	ownerID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
-	stats, err := h.service.GetOwnerStats(c.Request.Context(), ownerID)
+	stats, err := h.service.GetOwnerStats(c.Request.Context(), ownerID, locale)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
 	}
 
@@ -35,15 +39,17 @@ func (h *Handler) GetOwnerDashboard(c *gin.Context) {
 
 // GET /api/v1/staff/dashboard  (any authenticated user — staff use their own ID)
 func (h *Handler) GetStaffDashboard(c *gin.Context) {
+	msgs := i18n.FromCtx(c)
+
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": msgs.Unauthorized})
 		return
 	}
 
 	stats, err := h.service.GetStaffStats(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
 	}
 

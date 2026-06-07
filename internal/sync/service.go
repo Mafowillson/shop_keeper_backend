@@ -49,7 +49,7 @@ func NewService(
 //  3. Resolve offline temp IDs in each payload (current batch + DB lookup).
 //  4. Dispatch to the matching domain service.
 //  5. Mark committed records so future retries are no-ops.
-func (svc *Service) Push(ctx context.Context, userID string, input PushInput) (PushResult, error) {
+func (svc *Service) Push(ctx context.Context, userID string, input PushInput, locale string) (PushResult, error) {
 	result := PushResult{
 		Synced:    make([]string, 0, len(input.Records)),
 		Conflicts: make([]string, 0),
@@ -85,7 +85,7 @@ func (svc *Service) Push(ctx context.Context, userID string, input PushInput) (P
 		payload := svc.resolvePayloadIDs(ctx, record.Payload, result.IDMap)
 
 		// ── Dispatch to the matching domain service ───────────────────────────
-		newRealID, err := svc.dispatch(ctx, userID, record.EntityType, record.OperationType, payload)
+		newRealID, err := svc.dispatch(ctx, userID, record.EntityType, record.OperationType, payload, locale)
 		if err != nil {
 			// Dispatch errors are business-rule failures: mark as conflict and
 			// continue processing the rest of the batch.
@@ -110,6 +110,7 @@ func (svc *Service) dispatch(
 	ctx context.Context,
 	userID, entityType, opType string,
 	payload map[string]interface{},
+	locale string,
 ) (string, error) {
 	switch entityType {
 	case "sale":
@@ -127,11 +128,11 @@ func (svc *Service) dispatch(
 	case "product":
 		switch opType {
 		case "create":
-			return svc.createProduct(ctx, userID, payload)
+			return svc.createProduct(ctx, userID, payload, locale)
 		case "update":
-			return svc.updateProduct(ctx, userID, payload)
+			return svc.updateProduct(ctx, userID, payload, locale)
 		case "delete":
-			return svc.deleteProduct(ctx, userID, payload)
+			return svc.deleteProduct(ctx, userID, payload, locale)
 		}
 	}
 	// Unknown entity/operation — skip silently.
@@ -196,7 +197,7 @@ func (svc *Service) recordPayment(ctx context.Context, userID string, payload ma
 	return record.ID, nil
 }
 
-func (svc *Service) createProduct(ctx context.Context, userID string, payload map[string]interface{}) (string, error) {
+func (svc *Service) createProduct(ctx context.Context, userID string, payload map[string]interface{}, locale string) (string, error) {
 	units, err := parseUnits(payload)
 	if err != nil {
 		return "", err
@@ -214,14 +215,14 @@ func (svc *Service) createProduct(ctx context.Context, userID string, payload ma
 		InitialStock:      initialStock,
 		LowStockThreshold: intField(payload, "low_stock_threshold"),
 	}
-	created, err := svc.productSvc.Create(ctx, input, userID)
+	created, err := svc.productSvc.Create(ctx, input, userID, locale)
 	if err != nil {
 		return "", err
 	}
 	return created.ID, nil
 }
 
-func (svc *Service) updateProduct(ctx context.Context, userID string, payload map[string]interface{}) (string, error) {
+func (svc *Service) updateProduct(ctx context.Context, userID string, payload map[string]interface{}, locale string) (string, error) {
 	productID := stringField(payload, "product_id")
 	if strings.TrimSpace(productID) == "" {
 		return "", fmt.Errorf("product_id is required for product update")
@@ -241,16 +242,16 @@ func (svc *Service) updateProduct(ctx context.Context, userID string, payload ma
 		input.Units = units
 	}
 	// Product update doesn't create a new entity — no id_map entry needed.
-	_, err = svc.productSvc.Update(ctx, productID, input, userID)
+	_, err = svc.productSvc.Update(ctx, productID, input, userID, locale)
 	return "", err
 }
 
-func (svc *Service) deleteProduct(ctx context.Context, userID string, payload map[string]interface{}) (string, error) {
+func (svc *Service) deleteProduct(ctx context.Context, userID string, payload map[string]interface{}, locale string) (string, error) {
 	productID := stringField(payload, "product_id")
 	if strings.TrimSpace(productID) == "" {
 		return "", fmt.Errorf("product_id is required for product delete")
 	}
-	return "", svc.productSvc.Delete(ctx, productID, userID)
+	return "", svc.productSvc.Delete(ctx, productID, userID, locale)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

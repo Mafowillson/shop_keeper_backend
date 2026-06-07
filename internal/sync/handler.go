@@ -47,7 +47,7 @@ func (h *Handler) Push(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.Push(c.Request.Context(), userID, input)
+	result, err := h.service.Push(c.Request.Context(), userID, input, i18n.LocaleFromCtx(c))
 	if err != nil {
 		api.InternalError(c, msgs.InternalError)
 		return

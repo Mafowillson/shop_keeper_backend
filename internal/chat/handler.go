@@ -3,6 +3,7 @@ package chat
 import (
 	"net/http"
 
+	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -18,21 +19,23 @@ func NewHandler(svc *Service) *Handler {
 
 // POST /api/v1/chat/message
 func (h *Handler) Send(c *gin.Context) {
+	l10n := i18n.FromCtx(c)
+
 	ownerID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": l10n.Unauthorized})
 		return
 	}
 
 	var req SendRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": l10n.InvalidJSON})
 		return
 	}
 
 	saved, err := h.svc.Send(c.Request.Context(), ownerID, req.Message)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": l10n.InternalError})
 		return
 	}
 
@@ -49,20 +52,22 @@ func (h *Handler) Send(c *gin.Context) {
 
 // GET /api/v1/chat/history
 func (h *Handler) GetHistory(c *gin.Context) {
+	l10n := i18n.FromCtx(c)
+
 	ownerID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": l10n.Unauthorized})
 		return
 	}
 
-	msgs, err := h.svc.GetHistory(c.Request.Context(), ownerID)
+	history, err := h.svc.GetHistory(c.Request.Context(), ownerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": l10n.InternalError})
 		return
 	}
 
-	resp := HistoryResponse{Messages: make([]MessageResponse, len(msgs))}
-	for i, m := range msgs {
+	resp := HistoryResponse{Messages: make([]MessageResponse, len(history))}
+	for i, m := range history {
 		resp.Messages[i] = MessageResponse{
 			ID:        m.ID,
 			Role:      m.Role,
@@ -76,16 +81,18 @@ func (h *Handler) GetHistory(c *gin.Context) {
 
 // DELETE /api/v1/chat/history
 func (h *Handler) Clear(c *gin.Context) {
+	l10n := i18n.FromCtx(c)
+
 	ownerID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": l10n.Unauthorized})
 		return
 	}
 
 	if err := h.svc.Clear(c.Request.Context(), ownerID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": l10n.InternalError})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "chat history cleared"})
+	c.JSON(http.StatusOK, gin.H{"message": l10n.ChatHistoryCleared})
 }
