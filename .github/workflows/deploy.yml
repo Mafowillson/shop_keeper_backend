@@ -4,7 +4,10 @@ name: Build and Deploy ShopKeeper API
 on:
   push:
     branches: [main]
- 
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
