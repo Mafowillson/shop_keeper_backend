@@ -216,14 +216,15 @@ func (s *Service) NotifyStaffLogin(
 func (s *Service) GetInbox(
 	ctx context.Context,
 	ownerID bson.ObjectID,
+	shopID string,
 	unreadOnly bool,
 	limit, skip int64,
 ) ([]Notification, int64, error) {
-	notifications, err := s.repo.ListByOwner(ctx, ownerID, unreadOnly, limit, skip)
+	notifications, err := s.repo.ListByOwner(ctx, ownerID, shopID, unreadOnly, limit, skip)
 	if err != nil {
 		return nil, 0, err
 	}
-	unreadCount, err := s.repo.CountUnread(ctx, ownerID)
+	unreadCount, err := s.repo.CountUnread(ctx, ownerID, shopID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -234,8 +235,8 @@ func (s *Service) MarkRead(ctx context.Context, id, ownerID bson.ObjectID) error
 	return s.repo.MarkRead(ctx, id, ownerID)
 }
 
-func (s *Service) MarkAllRead(ctx context.Context, ownerID bson.ObjectID) error {
-	return s.repo.MarkAllRead(ctx, ownerID)
+func (s *Service) MarkAllRead(ctx context.Context, ownerID bson.ObjectID, shopID string) error {
+	return s.repo.MarkAllRead(ctx, ownerID, shopID)
 }
 
 // -----------------------------------------------------------------------

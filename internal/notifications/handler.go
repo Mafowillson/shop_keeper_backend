@@ -50,12 +50,13 @@ func (h *Handler) GetInbox(c *gin.Context) {
 		return
 	}
 
+	shopID := c.Query("shop_id")
 	unreadOnly := c.Query("unread") == "true"
 
 	var limit int64 = 20
 	var skip int64 = 0
 
-	notifications, unreadCount, err := h.service.GetInbox(c.Request.Context(), ownerID, unreadOnly, limit, skip)
+	notifications, unreadCount, err := h.service.GetInbox(c.Request.Context(), ownerID, shopID, unreadOnly, limit, skip)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
@@ -99,7 +100,8 @@ func (h *Handler) MarkAllRead(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.MarkAllRead(c.Request.Context(), ownerID); err != nil {
+	shopID := c.Query("shop_id")
+	if err := h.service.MarkAllRead(c.Request.Context(), ownerID, shopID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
 	}

@@ -55,13 +55,14 @@ func (r *Repo) Save(ctx context.Context, n *Notification) error {
 func (r *Repo) ListByOwner(
 	ctx context.Context,
 	ownerID bson.ObjectID,
+	shopID string,
 	unreadOnly bool,
 	limit, skip int64,
 ) ([]Notification, error) {
-	// Build the filter. We always filter by owner_id.
 	filter := bson.M{"owner_id": ownerID}
-
-	// Optionally add the unread filter (FR-27: ?unread=true query param).
+	if shopID != "" {
+		filter["shop_id"] = shopID
+	}
 	if unreadOnly {
 		filter["read"] = false
 	}
@@ -86,11 +87,12 @@ func (r *Repo) ListByOwner(
 
 // CountUnread returns how many unread notifications the owner has.
 // Used to populate a badge count in Flutter's bottom nav bar.
-func (r *Repo) CountUnread(ctx context.Context, ownerID bson.ObjectID) (int64, error) {
-	count, err := r.notifications.CountDocuments(ctx, bson.M{
-		"owner_id": ownerID,
-		"read":     false,
-	})
+func (r *Repo) CountUnread(ctx context.Context, ownerID bson.ObjectID, shopID string) (int64, error) {
+	filter := bson.M{"owner_id": ownerID, "read": false}
+	if shopID != "" {
+		filter["shop_id"] = shopID
+	}
+	count, err := r.notifications.CountDocuments(ctx, filter)
 	if err != nil {
 		return 0, fmt.Errorf("notification repo: count unread: %w", err)
 	}
@@ -123,11 +125,12 @@ func (r *Repo) MarkRead(ctx context.Context, id, ownerID bson.ObjectID) error {
 
 // MarkAllRead sets read=true on every unread notification for an owner.
 // Useful for a "mark all as read" button in Flutter.
-func (r *Repo) MarkAllRead(ctx context.Context, ownerID bson.ObjectID) error {
-	_, err := r.notifications.UpdateMany(ctx,
-		bson.M{"owner_id": ownerID, "read": false},
-		bson.M{"$set": bson.M{"read": true}},
-	)
+func (r *Repo) MarkAllRead(ctx context.Context, ownerID bson.ObjectID, shopID string) error {
+	filter := bson.M{"owner_id": ownerID, "read": false}
+	if shopID != "" {
+		filter["shop_id"] = shopID
+	}
+	_, err := r.notifications.UpdateMany(ctx, filter, bson.M{"$set": bson.M{"read": true}})
 	if err != nil {
 		return fmt.Errorf("notification repo: mark all read: %w", err)
 	}
