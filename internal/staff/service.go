@@ -99,12 +99,12 @@ func (service *Service) GetByIDAndOwner(ctx context.Context, id string, ownerID 
 	return service.repo.FindByIDAndOwner(ctx, id, ownerID)
 }
 
-func (service *Service) ListByOwner(ctx context.Context, ownerID string, page, pageSize int) ([]Staff, int64, error) {
+func (service *Service) ListByOwner(ctx context.Context, ownerID, shopID string, page, pageSize int) ([]Staff, int64, error) {
 	if strings.TrimSpace(ownerID) == "" {
 		return nil, 0, errors.New("owner id is required")
 	}
 
-	return service.repo.ListByOwner(ctx, ownerID, page, pageSize)
+	return service.repo.ListByOwner(ctx, ownerID, shopID, page, pageSize)
 }
 
 func (service *Service) ListByShop(ctx context.Context, shopID string) ([]Staff, error) {

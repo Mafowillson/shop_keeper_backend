@@ -70,8 +70,11 @@ func (repo *Repo) FindByIDAndOwner(ctx context.Context, id string, ownerID strin
 	return staff, nil
 }
 
-func (repo *Repo) ListByOwner(ctx context.Context, ownerID string, page, pageSize int) ([]Staff, int64, error) {
+func (repo *Repo) ListByOwner(ctx context.Context, ownerID, shopID string, page, pageSize int) ([]Staff, int64, error) {
 	filter := bson.M{"owner_id": ownerID}
+	if strings.TrimSpace(shopID) != "" {
+		filter["shop_id"] = shopID
+	}
 
 	total, err := repo.col.CountDocuments(ctx, filter)
 	if err != nil {

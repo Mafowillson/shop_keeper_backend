@@ -95,7 +95,8 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	staffList, total, err := h.service.ListByOwner(c.Request.Context(), userID, page, pageSize)
+	shopID := c.Query("shop_id")
+	staffList, total, err := h.service.ListByOwner(c.Request.Context(), userID, shopID, page, pageSize)
 	if err != nil {
 		api.InternalError(c, msgs.InternalError)
 		return
