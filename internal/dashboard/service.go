@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"shop_keeper_backend/internal/customer"
@@ -42,15 +43,29 @@ func NewService(
 }
 
 // GetOwnerStats builds the owner dashboard response for the given ownerID.
-func (s *Service) GetOwnerStats(ctx context.Context, ownerID string, locale string) (OwnerDashboardResponse, error) {
+func (s *Service) GetOwnerStats(ctx context.Context, ownerID string, locale string, shopID string) (OwnerDashboardResponse, error) {
+	shopID = strings.TrimSpace(shopID)
+	if shopID == "" {
+		return OwnerDashboardResponse{}, fmt.Errorf("dashboard: missing shop id")
+	}
+
 	u, err := s.userRepo.FindByID(ctx, ownerID)
 	if err != nil {
 		return OwnerDashboardResponse{}, fmt.Errorf("dashboard: find owner: %w", err)
 	}
-	if u.ShopID == "" {
-		return OwnerDashboardResponse{}, fmt.Errorf("dashboard: owner has no shop")
+
+	if shopID != "" {
+		shop, err := s.shopRepo.FindByIDAndOwner(ctx, shopID, ownerID)
+		if err != nil {
+			return OwnerDashboardResponse{}, fmt.Errorf("dashboard: invalid shop: %w", err)
+		}
+		shopID = shop.ID
+	} else {
+		if u.ShopID == "" {
+			return OwnerDashboardResponse{}, fmt.Errorf("dashboard: owner has no shop")
+		}
+		shopID = u.ShopID
 	}
-	shopID := u.ShopID
 
 	now := time.Now().UTC()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)

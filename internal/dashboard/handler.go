@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"net/http"
+	"strings"
 
 	"shop_keeper_backend/internal/i18n"
 	"shop_keeper_backend/internal/middleware"
@@ -28,7 +29,13 @@ func (h *Handler) GetOwnerDashboard(c *gin.Context) {
 		return
 	}
 
-	stats, err := h.service.GetOwnerStats(c.Request.Context(), ownerID, locale)
+	shopID := strings.TrimSpace(c.Query("shop_id"))
+	if shopID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msgs.BadRequest})
+		return
+	}
+
+	stats, err := h.service.GetOwnerStats(c.Request.Context(), ownerID, locale, shopID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": msgs.InternalError})
 		return
