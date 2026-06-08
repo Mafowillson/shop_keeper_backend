@@ -68,12 +68,12 @@ func buildCodeBoxes(code string) string {
 		if i > 0 {
 			b.WriteString(`<td style="width:8px;"></td>`)
 		}
-		fmt.Fprintf(&b,
+		b.WriteString(fmt.Sprintf(
 			`<td style="width:52px;height:64px;background:#f8fafc;border:2px solid #e2e8f0;`+
 				`border-radius:12px;text-align:center;vertical-align:middle;`+
 				`font-size:32px;font-weight:700;color:#1e293b;font-family:monospace;" align="center">%c</td>`,
 			ch,
-		)
+		))
 	}
 	return b.String()
 }
@@ -152,13 +152,28 @@ func (s *Service) sendMail(to, subject, html string) error {
 	}
 
 	var msg strings.Builder
-	msg.WriteString("From: " + s.cfg.From + "\r\n")
-	msg.WriteString("To: " + to + "\r\n")
-	msg.WriteString("Subject: " + subject + "\r\n")
-	msg.WriteString("Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n")
-	msg.WriteString("Message-ID: " + messageID(domain) + "\r\n")
+	fromHeader := s.cfg.From
+	if parsed, err := mail.ParseAddress(s.cfg.From); err == nil {
+		fromHeader = parsed.String()
+	}
+	msg.WriteString("From: ")
+	msg.WriteString(fromHeader)
+	msg.WriteString("\r\n")
+	msg.WriteString("To: ")
+	msg.WriteString(to)
+	msg.WriteString("\r\n")
+	msg.WriteString("Subject: ")
+	msg.WriteString(subject)
+	msg.WriteString("\r\n")
+	msg.WriteString("Date: ")
+	msg.WriteString(time.Now().UTC().Format(time.RFC1123Z))
+	msg.WriteString("\r\n")
+	msg.WriteString("Message-ID: ")
+	msg.WriteString(messageID(domain))
+	msg.WriteString("\r\n")
 	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString("Content-Type: text/html; charset=\"utf-8\"\r\n")
+	msg.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n")
+	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 	msg.WriteString("\r\n")
 	msg.WriteString(html)
 
