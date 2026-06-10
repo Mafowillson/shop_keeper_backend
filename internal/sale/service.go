@@ -190,10 +190,6 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 		totalAmount += itemTotal
 	}
 
-	if input.IsCredit && strings.TrimSpace(input.CustomerID) == "" {
-		return Sale{}, errors.New("customer_id is required for credit sales")
-	}
-
 	paidAmount := input.PaidAmount
 	if paidAmount < 0 {
 		return Sale{}, errors.New("paid amount cannot be negative")
@@ -204,8 +200,11 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 	}
 
 	dueAmount := totalAmount - paidAmount
-	if !input.IsCredit && dueAmount > 0 {
-		return Sale{}, errors.New("non-credit sale must be paid in full")
+
+	// A customer is required whenever there is an outstanding balance —
+	// whether it is a full credit sale or a partial cash payment.
+	if dueAmount > 0 && strings.TrimSpace(input.CustomerID) == "" {
+		return Sale{}, errors.New("customer_id is required when payment is incomplete")
 	}
 
 	sale := Sale{
@@ -217,7 +216,7 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 		TotalAmount: totalAmount,
 		PaidAmount:  paidAmount,
 		DueAmount:   dueAmount,
-		IsCredit:    input.IsCredit,
+		IsCredit:    input.IsCredit || dueAmount > 0,
 		IsPaid:      dueAmount == 0,
 		CreatedAt:   time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
@@ -234,7 +233,7 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 		return Sale{}, err
 	}
 
-	if input.IsCredit {
+	if dueAmount > 0 {
 		if _, err := service.customerSvc.AddCredit(ctx, sale.CustomerID, sale.ShopID, sale.ID, userID, sale.DueAmount); err != nil {
 			_ = service.repo.Delete(ctx, sale.ID)
 			for _, updated := range updatedProducts {
