@@ -196,6 +196,12 @@ func (service *Service) Update(ctx context.Context, id string, input UpdateProdu
 	if input.IsActive != nil {
 		update["is_active"] = *input.IsActive
 	}
+	if input.StockQty != nil {
+		if *input.StockQty < 0 {
+			return ProductResponse{}, errors.New("stock_qty cannot be negative")
+		}
+		update["stock_qty"] = *input.StockQty
+	}
 
 	if len(update) == 1 {
 		return ProductResponse{}, errors.New("no updates provided")

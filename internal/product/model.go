@@ -193,6 +193,7 @@ type UpdateProductInput struct {
 	Units             []UnitDefinition `json:"units,omitempty"`
 	LowStockThreshold *int             `json:"low_stock_threshold,omitempty"`
 	IsActive          *bool            `json:"is_active,omitempty"`
+	StockQty          *int             `json:"stock_qty,omitempty"`
 }
 
 type SyncProductItem struct {
