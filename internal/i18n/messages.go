@@ -122,6 +122,32 @@ type Messages struct {
 
 	// ── Chat ─────────────────────────────────────────────────────────────────
 	ChatHistoryCleared string
+
+	// ── AI-1 Stockout Forecast ────────────────────────────────────────────────
+	// NotifStockoutForecastBody args: productName (string), daysUntilStockout (int), reorderQty (int)
+	NotifStockoutForecastTitle string
+	NotifStockoutForecastBody  string
+
+	// ── AI-3 Price Recommendation reasons ────────────────────────────────────
+	// All four strings take args: unitsSold (int), sellThroughRate (float64)
+	PriceRecHighDemandReason   string
+	PriceRecGoodDemandReason   string
+	PriceRecSlowMovementReason string
+	PriceRecVerySlowReason     string
+
+	// ── AI-4 Fraud / Anomaly Alerts ──────────────────────────────────────────
+	// NotifFraudLargeSaleBody  args: saleTotal (float64), excess (float64)
+	// NotifFraudOffHoursBody   args: saleTotal (float64), timeStr (string)
+	// NotifFraudRapidCreditBody args: customerID (string), count (int64)
+	NotifFraudAlertTitle      string
+	NotifFraudLargeSaleBody   string
+	NotifFraudOffHoursBody    string
+	NotifFraudRapidCreditBody string
+
+	// ── AI-5 Weekly Insights ─────────────────────────────────────────────────
+	// NotifWeeklyInsightsBody args: weekStart (string date)
+	NotifWeeklyInsightsTitle string
+	NotifWeeklyInsightsBody  string
 }
 
 // EN contains all English strings.
@@ -239,6 +265,26 @@ var EN = Messages{
 
 	// Chat
 	ChatHistoryCleared: "Chat history cleared.",
+
+	// AI-1 Stockout Forecast
+	NotifStockoutForecastTitle: "📦 Stockout Alert",
+	NotifStockoutForecastBody:  "%s will run out of stock in %d day(s). Recommended reorder: %d units.",
+
+	// AI-3 Price Recommendation reasons
+	PriceRecHighDemandReason:   "Selling fast — %d base units sold in the last 30 days (sell-through rate: %.2f). A 5%% price increase is suggested.",
+	PriceRecGoodDemandReason:   "Selling well — %d base units sold in the last 30 days (sell-through rate: %.2f). A 3%% price increase is suggested.",
+	PriceRecSlowMovementReason: "Slow movement — only %d base units sold in the last 30 days (sell-through rate: %.2f). A 5%% price reduction may boost demand.",
+	PriceRecVerySlowReason:     "Very slow movement — only %d base units sold in the last 30 days (sell-through rate: %.2f). Consider a 10%% reduction or a promotion.",
+
+	// AI-4 Fraud / Anomaly Alerts
+	NotifFraudAlertTitle:      "⚠️ Fraud Alert",
+	NotifFraudLargeSaleBody:   "Suspicious sale: %.0f FCFA is %.0f FCFA above your shop's normal range.",
+	NotifFraudOffHoursBody:    "A sale of %.0f FCFA was recorded at %s, outside business hours.",
+	NotifFraudRapidCreditBody: "Customer %s received %d credit sales in the last 24 hours.",
+
+	// AI-5 Weekly Insights
+	NotifWeeklyInsightsTitle: "📊 Weekly Insights Ready",
+	NotifWeeklyInsightsBody:  "Your sales insight for the week of %s is ready.",
 }
 
 // FR contains all French strings (default fallback for Cameroon).
@@ -356,6 +402,26 @@ var FR = Messages{
 
 	// Chat
 	ChatHistoryCleared: "Historique de conversation effacé.",
+
+	// AI-1 Stockout Forecast
+	NotifStockoutForecastTitle: "📦 Alerte de rupture de stock",
+	NotifStockoutForecastBody:  "%s sera en rupture de stock dans %d jour(s). Commande recommandée : %d unités.",
+
+	// AI-3 Price Recommendation reasons
+	PriceRecHighDemandReason:   "Vente rapide — %d unités de base vendues ces 30 derniers jours (taux d'écoulement : %.2f). Une augmentation de prix de 5%% est suggérée.",
+	PriceRecGoodDemandReason:   "Bonne vente — %d unités de base vendues ces 30 derniers jours (taux d'écoulement : %.2f). Une augmentation de prix de 3%% est suggérée.",
+	PriceRecSlowMovementReason: "Écoulement lent — seulement %d unités de base vendues ces 30 derniers jours (taux d'écoulement : %.2f). Une réduction de 5%% pourrait stimuler la demande.",
+	PriceRecVerySlowReason:     "Écoulement très lent — seulement %d unités de base vendues ces 30 derniers jours (taux d'écoulement : %.2f). Envisagez une réduction de 10%% ou une promotion.",
+
+	// AI-4 Fraud / Anomaly Alerts
+	NotifFraudAlertTitle:      "⚠️ Alerte de fraude",
+	NotifFraudLargeSaleBody:   "Vente suspecte : %.0f FCFA dépasse de %.0f FCFA la plage normale de votre boutique.",
+	NotifFraudOffHoursBody:    "Une vente de %.0f FCFA a été enregistrée à %s, en dehors des heures d'ouverture.",
+	NotifFraudRapidCreditBody: "Le client %s a reçu %d ventes à crédit au cours des 24 dernières heures.",
+
+	// AI-5 Weekly Insights
+	NotifWeeklyInsightsTitle: "📊 Rapport hebdomadaire prêt",
+	NotifWeeklyInsightsBody:  "Votre rapport d'analyse pour la semaine du %s est prêt.",
 }
 
 // Get returns the Messages for the given locale. Defaults to FR.

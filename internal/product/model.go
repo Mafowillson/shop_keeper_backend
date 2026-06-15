@@ -42,6 +42,12 @@ type Product struct {
 	IsActive          bool             `bson:"is_active" json:"is_active"`
 	CreatedAt         time.Time        `bson:"created_at" json:"created_at"`
 	UpdatedAt         time.Time        `bson:"updated_at" json:"updated_at"`
+
+	// AI-1: stockout forecast fields — populated nightly by the forecasting job.
+	// Nil until at least one forecasting run has processed this product.
+	DaysUntilStockout  *float64   `bson:"days_until_stockout,omitempty" json:"days_until_stockout,omitempty"`
+	ReorderQty         *int       `bson:"reorder_qty,omitempty" json:"reorder_qty,omitempty"`
+	StockoutAlertSentAt *time.Time `bson:"stockout_alert_sent_at,omitempty" json:"-"`
 }
 
 // ProductResponse wraps Product and appends a computed stock breakdown.

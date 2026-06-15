@@ -1,6 +1,15 @@
 package sale
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// AnomalyDetector is implemented by the anomaly package and injected into
+// Service to avoid an import cycle (anomaly imports sale, not the reverse).
+type AnomalyDetector interface {
+	CheckSale(ctx context.Context, sale Sale)
+}
 
 type SaleItem struct {
 	ProductID  string  `bson:"product_id" json:"product_id"`
@@ -42,4 +51,14 @@ type CreateSaleInput struct {
 	Items      []CreateSaleItemInput `json:"items"`
 	PaidAmount float64               `json:"paid_amount,omitempty"`
 	IsCredit   bool                  `json:"is_credit,omitempty"`
+	// OverrideRiskWarning is true when the staff confirmed the AI-2 high-risk
+	// modal before proceeding with a credit sale. Logged on the debt record.
+	OverrideRiskWarning bool `json:"override_risk_warning,omitempty"`
+}
+
+// ProductRevenueStat is produced by TopProductsByRevenue for AI context building.
+type ProductRevenueStat struct {
+	ProductID string  `bson:"_id"`
+	Revenue   float64 `bson:"revenue"`
+	UnitsSold int     `bson:"units"`
 }

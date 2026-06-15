@@ -3,6 +3,11 @@ package httpserver
 import (
 	"context"
 	"fmt"
+	"shop_keeper_backend/internal/ai/anomaly"
+	"shop_keeper_backend/internal/ai/forecasting"
+	"shop_keeper_backend/internal/ai/insights"
+	"shop_keeper_backend/internal/ai/pricing"
+	"shop_keeper_backend/internal/ai/riskscoring"
 	"shop_keeper_backend/internal/app"
 	"shop_keeper_backend/internal/chat"
 	"shop_keeper_backend/internal/customer"
@@ -104,11 +109,17 @@ func NewRouter(ap *app.App) *gin.Engine {
 
 	customerRepo := customer.NewRepo(ap.DB)
 	customerSvc := customer.NewService(customerRepo)
+	customerSvc.SetRiskScorer(riskscoring.NewService(customerRepo))
 	customerHandler := customer.NewHandler(customerSvc)
 
 	saleRepo := sale.NewRepo(ap.DB)
 	saleSvc := sale.NewService(saleRepo, productRepo, shopRepo, staffRepo, customerSvc)
 	saleHandler := sale.NewHandler(saleSvc)
+
+	anomalyRepo := anomaly.NewRepo(ap.DB)
+	anomalySvc := anomaly.NewService(anomalyRepo, saleRepo, shopRepo, userRepo, notifSvc)
+	saleSvc.SetAnomalyDetector(anomalySvc)
+	anomalyHandler := anomaly.NewHandler(anomalySvc)
 
 	staffSvc := staff.NewService(staffRepo)
 	staffHandler := staff.NewHandler(staffSvc, shopInfoAdapter{shopRepo})
@@ -190,8 +201,29 @@ func NewRouter(ap *app.App) *gin.Engine {
 	ownerRoutes.GET("/dashboard", dashHandler.GetOwnerDashboard)
 	protected.GET("/staff/dashboard", dashHandler.GetStaffDashboard)
 
+	forecastSvc := forecasting.NewService(productRepo, saleRepo, shopRepo, notifSvc)
+	forecastSvc.StartNightlyJob(context.Background())
+
+	pricingRepo := pricing.NewRepo(ap.DB)
+	pricingSvc := pricing.NewService(pricingRepo, productRepo, saleRepo, shopRepo, userRepo)
+	pricingSvc.StartWeeklyJob(context.Background())
+	pricingHandler := pricing.NewHandler(pricingSvc)
+
+	aiRoutes := ownerRoutes.Group("/ai")
+	aiRoutes.GET("/price-recommendations", pricingHandler.List)
+	aiRoutes.POST("/price-recommendations/:id/accept", pricingHandler.Accept)
+	aiRoutes.POST("/price-recommendations/:id/dismiss", pricingHandler.Dismiss)
+	aiRoutes.GET("/fraud-alerts", anomalyHandler.List)
+	aiRoutes.PATCH("/fraud-alerts/:id/acknowledge", anomalyHandler.Acknowledge)
+
+	insightsRepo := insights.NewRepo(ap.DB)
+	insightsSvc := insights.NewService(insightsRepo, shopRepo, saleRepo, productRepo, customerRepo, anomalyRepo, userRepo, notifSvc, ap.Config.GroqAPIKey)
+	insightsSvc.StartWeeklyJob(context.Background())
+	insightsHandler := insights.NewHandler(insightsSvc)
+	aiRoutes.GET("/weekly-insights", insightsHandler.List)
+
 	chatRepo := chat.NewRepo(ap.DB)
-	chatSvc := chat.NewService(chatRepo, userRepo, productRepo, saleRepo, ap.Config.GroqAPIKey)
+	chatSvc := chat.NewService(chatRepo, userRepo, productRepo, saleRepo, customerRepo, ap.Config.GroqAPIKey)
 	chatHandler := chat.NewHandler(chatSvc)
 	chatRoutes := ownerRoutes.Group("/chat")
 	chatRoutes.POST("/message", chatHandler.Send)

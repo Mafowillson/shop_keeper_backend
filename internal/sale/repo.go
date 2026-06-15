@@ -170,6 +170,120 @@ func (repo *Repo) ListRecentByShop(ctx context.Context, shopID string, limit int
 	return sales, nil
 }
 
+// PeriodStatsByShop returns total revenue and transaction count for a shop within [from, to).
+func (repo *Repo) PeriodStatsByShop(ctx context.Context, shopID string, from, to time.Time) (float64, int64, error) {
+	filter := bson.M{"shop_id": shopID, "created_at": bson.M{"$gte": from, "$lt": to}}
+	count, err := repo.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count period sales: %w", err)
+	}
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: filter}},
+		{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$total_amount"}}}},
+	}
+	cursor, err := repo.col.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, count, fmt.Errorf("sum period sales: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var result []struct {
+		Total float64 `bson:"total"`
+	}
+	if err := cursor.All(ctx, &result); err != nil || len(result) == 0 {
+		return 0, count, nil
+	}
+	return result[0].Total, count, nil
+}
+
+// UnitsSoldByProductSince returns the total base units sold per product_id
+// across all sales in [shopID] since [since]. Products with no sales are absent from the map.
+func (repo *Repo) UnitsSoldByProductSince(ctx context.Context, shopID string, since time.Time) (map[string]int, error) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"shop_id": shopID, "created_at": bson.M{"$gte": since}}}},
+		{{Key: "$unwind", Value: "$items"}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   "$items.product_id",
+			"units": bson.M{"$sum": "$items.base_qty_deducted"},
+		}}},
+	}
+	cursor, err := repo.col.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("units sold by product: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var rows []struct {
+		ProductID string `bson:"_id"`
+		Units     int    `bson:"units"`
+	}
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("decode units sold: %w", err)
+	}
+	m := make(map[string]int, len(rows))
+	for _, r := range rows {
+		m[r.ProductID] = r.Units
+	}
+	return m, nil
+}
+
+// TopProductsByRevenue returns the top [limit] products by total revenue since [since],
+// unwinding sale items and grouping by product_id.
+func (repo *Repo) TopProductsByRevenue(ctx context.Context, shopID string, since time.Time, limit int) ([]ProductRevenueStat, error) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"shop_id": shopID, "created_at": bson.M{"$gte": since}}}},
+		{{Key: "$unwind", Value: "$items"}},
+		{{Key: "$group", Value: bson.M{
+			"_id":     "$items.product_id",
+			"revenue": bson.M{"$sum": "$items.total_price"},
+			"units":   bson.M{"$sum": "$items.base_qty_deducted"},
+		}}},
+		{{Key: "$sort", Value: bson.M{"revenue": -1}}},
+		{{Key: "$limit", Value: limit}},
+	}
+	cursor, err := repo.col.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("top products by revenue: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var stats []ProductRevenueStat
+	if err := cursor.All(ctx, &stats); err != nil {
+		return nil, fmt.Errorf("decode top products: %w", err)
+	}
+	return stats, nil
+}
+
+// ListRecentByShopBefore returns the [limit] most recent sales in a shop created strictly
+// before [before]. Used by AI-4 to build the statistical baseline for large-sale detection.
+func (repo *Repo) ListRecentByShopBefore(ctx context.Context, shopID string, before time.Time, limit int) ([]Sale, error) {
+	filter := bson.M{"shop_id": shopID, "created_at": bson.M{"$lt": before}}
+	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(int64(limit))
+	cursor, err := repo.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("list recent shop sales before: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var sales []Sale
+	if err := cursor.All(ctx, &sales); err != nil {
+		return nil, fmt.Errorf("decode recent sales before: %w", err)
+	}
+	return sales, nil
+}
+
+// CountRecentCreditsByCustomer counts credit sales for a specific customer in a shop
+// since [since]. Used by AI-4 to detect rapid successive credit granting.
+func (repo *Repo) CountRecentCreditsByCustomer(ctx context.Context, shopID, customerID string, since time.Time) (int64, error) {
+	filter := bson.M{
+		"shop_id":     shopID,
+		"customer_id": customerID,
+		"is_credit":   true,
+		"created_at":  bson.M{"$gte": since},
+	}
+	count, err := repo.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("count recent credits by customer: %w", err)
+	}
+	return count, nil
+}
+
 // ListRecentByUser returns the [limit] most recent sales recorded by a specific user.
 func (repo *Repo) ListRecentByUser(ctx context.Context, userID string, limit int) ([]Sale, error) {
 	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(int64(limit))

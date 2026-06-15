@@ -18,15 +18,22 @@ import (
 )
 
 type Service struct {
-	repo        *Repo
-	productRepo *product.Repo
-	shopRepo    *shop.Repo
-	staffRepo   *staff.Repo
-	customerSvc *customer.Service
+	repo            *Repo
+	productRepo     *product.Repo
+	shopRepo        *shop.Repo
+	staffRepo       *staff.Repo
+	customerSvc     *customer.Service
+	anomalyDetector AnomalyDetector
 }
 
 func NewService(repo *Repo, productRepo *product.Repo, shopRepo *shop.Repo, staffRepo *staff.Repo, customerSvc *customer.Service) *Service {
 	return &Service{repo: repo, productRepo: productRepo, shopRepo: shopRepo, staffRepo: staffRepo, customerSvc: customerSvc}
+}
+
+// SetAnomalyDetector wires in the AI-4 anomaly detector after construction,
+// avoiding an import cycle between the sale and anomaly packages.
+func (service *Service) SetAnomalyDetector(d AnomalyDetector) {
+	service.anomalyDetector = d
 }
 
 func (service *Service) validateShopUser(ctx context.Context, shopID string, userID string) error {
@@ -234,7 +241,7 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 	}
 
 	if dueAmount > 0 {
-		if _, err := service.customerSvc.AddCredit(ctx, sale.CustomerID, sale.ShopID, sale.ID, userID, sale.DueAmount); err != nil {
+		if _, err := service.customerSvc.AddCredit(ctx, sale.CustomerID, sale.ShopID, sale.ID, userID, sale.DueAmount, input.OverrideRiskWarning); err != nil {
 			_ = service.repo.Delete(ctx, sale.ID)
 			for _, updated := range updatedProducts {
 				_, _ = service.productRepo.Update(ctx, updated.id, bson.M{
@@ -244,6 +251,10 @@ func (service *Service) Create(ctx context.Context, userID string, input CreateS
 			}
 			return Sale{}, err
 		}
+	}
+
+	if service.anomalyDetector != nil {
+		go service.anomalyDetector.CheckSale(context.Background(), created)
 	}
 
 	return created, nil

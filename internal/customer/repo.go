@@ -122,6 +122,58 @@ func (repo *Repo) GetDebtHistoryByCustomer(ctx context.Context, customerID strin
 	return records, nil
 }
 
+// CountWithDebt returns how many customers in a shop have total_debt > 0.
+func (repo *Repo) CountWithDebt(ctx context.Context, shopID string) (int64, error) {
+	count, err := repo.customerCol.CountDocuments(ctx, bson.M{"shop_id": shopID, "total_debt": bson.M{"$gt": 0}})
+	if err != nil {
+		return 0, fmt.Errorf("count with debt: %w", err)
+	}
+	return count, nil
+}
+
+// TopDebtorsByShop returns the [limit] customers with the highest total_debt, descending.
+func (repo *Repo) TopDebtorsByShop(ctx context.Context, shopID string, limit int) ([]Customer, error) {
+	filter := bson.M{"shop_id": shopID, "total_debt": bson.M{"$gt": 0}}
+	opts := options.Find().SetSort(bson.M{"total_debt": -1}).SetLimit(int64(limit))
+	cursor, err := repo.customerCol.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("top debtors: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var customers []Customer
+	if err := cursor.All(ctx, &customers); err != nil {
+		return nil, fmt.Errorf("decode top debtors: %w", err)
+	}
+	return customers, nil
+}
+
+// UpdateRiskScore persists the AI-2 computed risk score and level for a customer.
+func (repo *Repo) UpdateRiskScore(ctx context.Context, customerID string, score int, level string, calculatedAt time.Time) error {
+	filter := bson.M{"_id": customerID}
+	update := bson.M{"$set": bson.M{
+		"risk_score":         score,
+		"risk_level":         level,
+		"risk_calculated_at": calculatedAt,
+		"updated_at":         calculatedAt,
+	}}
+	if _, err := repo.customerCol.UpdateOne(ctx, filter, update); err != nil {
+		return fmt.Errorf("update risk score: %w", err)
+	}
+	return nil
+}
+
+// CountNewByShopSince returns how many customers were created for a shop since [since].
+func (repo *Repo) CountNewByShopSince(ctx context.Context, shopID string, since time.Time) (int64, error) {
+	count, err := repo.customerCol.CountDocuments(ctx, bson.M{
+		"shop_id":    shopID,
+		"created_at": bson.M{"$gte": since},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count new customers: %w", err)
+	}
+	return count, nil
+}
+
 // TotalDebtByShop sums the total_debt field across all customers in a shop.
 func (repo *Repo) TotalDebtByShop(ctx context.Context, shopID string) (float64, error) {
 	pipeline := mongo.Pipeline{

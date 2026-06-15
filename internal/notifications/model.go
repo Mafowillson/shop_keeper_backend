@@ -27,6 +27,16 @@ const (
 	// TypeStaffLogin fires every time a staff member successfully logs in.
 	TypeStaffLogin NotificationType = "staff_login"
 
+	// TypeStockoutForecast fires when the nightly AI-1 job predicts a product
+	// will run out of stock within 7 days — sent once per stockout episode.
+	TypeStockoutForecast NotificationType = "stockout_forecast"
+
+	// TypeFraudAlert fires when AI-4 detects an anomalous sale event.
+	TypeFraudAlert NotificationType = "fraud_alert"
+
+	// TypeWeeklyInsights fires when the AI-5 weekly insight report is ready.
+	TypeWeeklyInsights NotificationType = "weekly_insights"
+
 	// Product catalogue events — sent to staff devices only (not owner inbox).
 	TypeProductAdded   NotificationType = "product_added"
 	TypeProductUpdated NotificationType = "product_updated"
@@ -84,10 +94,13 @@ type Preferences struct {
 	OwnerID bson.ObjectID `bson:"owner_id" json:"owner_id"`
 
 	// Each field maps to one NotificationType. true = send it, false = suppress.
-	LowStock    bool `bson:"low_stock"    json:"low_stock"`
-	LargeSale   bool `bson:"large_sale"   json:"large_sale"`
-	DebtPayment bool `bson:"debt_payment" json:"debt_payment"`
-	StaffLogin  bool `bson:"staff_login"  json:"staff_login"`
+	LowStock         bool `bson:"low_stock"          json:"low_stock"`
+	LargeSale        bool `bson:"large_sale"         json:"large_sale"`
+	DebtPayment      bool `bson:"debt_payment"       json:"debt_payment"`
+	StaffLogin       bool `bson:"staff_login"        json:"staff_login"`
+	StockoutForecast bool `bson:"stockout_forecast"  json:"stockout_forecast"`
+	FraudAlert       bool `bson:"fraud_alert"        json:"fraud_alert"`
+	WeeklyInsights   bool `bson:"weekly_insights"    json:"weekly_insights"`
 
 	// LargeSaleThreshold is the FCFA amount above which a sale is "large".
 	// The owner sets this in preferences. Default 50000 FCFA.
@@ -105,6 +118,9 @@ func DefaultPreferences(ownerID bson.ObjectID) Preferences {
 		LargeSale:          true,
 		DebtPayment:        true,
 		StaffLogin:         true,
+		StockoutForecast:   true,
+		FraudAlert:         true,
+		WeeklyInsights:     true,
 		LargeSaleThreshold: 50000,
 	}
 }
@@ -119,6 +135,9 @@ type UpdatePreferencesRequest struct {
 	LargeSale          *bool    `json:"large_sale"`
 	DebtPayment        *bool    `json:"debt_payment"`
 	StaffLogin         *bool    `json:"staff_login"`
+	StockoutForecast   *bool    `json:"stockout_forecast"`
+	FraudAlert         *bool    `json:"fraud_alert"`
+	WeeklyInsights     *bool    `json:"weekly_insights"`
 	LargeSaleThreshold *float64 `json:"large_sale_threshold"`
 }
 

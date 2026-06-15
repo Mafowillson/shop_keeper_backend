@@ -92,6 +92,21 @@ func (repo *Repo) Update(ctx context.Context, id string, update bson.M) (Shop, e
 	return shop, nil
 }
 
+// ListAll returns every shop in the database. Used by background AI jobs that
+// need to process all shops regardless of owner.
+func (repo *Repo) ListAll(ctx context.Context) ([]Shop, error) {
+	cursor, err := repo.col.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("list all shops: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var shops []Shop
+	if err := cursor.All(ctx, &shops); err != nil {
+		return nil, fmt.Errorf("decode shops: %w", err)
+	}
+	return shops, nil
+}
+
 func (repo *Repo) SoftDelete(ctx context.Context, id string) error {
 	filter := bson.M{"_id": id}
 	update := bson.M{"$set": bson.M{"is_active": false, "updated_at": time.Now().UTC()}}

@@ -1,6 +1,23 @@
 package customer
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// Risk level constants used by AI-2 and returned in API responses.
+const (
+	RiskLevelLow               = "low"
+	RiskLevelMedium            = "medium"
+	RiskLevelHigh              = "high"
+	RiskLevelInsufficientHistory = "insufficient_history"
+)
+
+// RiskScorer is implemented by the AI-2 riskscoring service.
+// Defined here to avoid an import cycle between the customer and riskscoring packages.
+type RiskScorer interface {
+	Calculate(ctx context.Context, customerID string) error
+}
 
 // Customer represents a credit customer for a shop.
 type Customer struct {
@@ -11,6 +28,11 @@ type Customer struct {
 	TotalDebt float64   `bson:"total_debt" json:"total_debt"`
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
+
+	// AI-2: risk scoring fields — updated after every debt or payment event.
+	RiskScore        int        `bson:"risk_score" json:"risk_score"`
+	RiskLevel        string     `bson:"risk_level" json:"risk_level"`
+	RiskCalculatedAt *time.Time `bson:"risk_calculated_at,omitempty" json:"risk_calculated_at,omitempty"`
 }
 
 // DebtRecord represents a credit or payment event for a customer.
@@ -25,6 +47,8 @@ type DebtRecord struct {
 	Note         string    `bson:"note,omitempty" json:"note,omitempty"`
 	RecordedBy   string    `bson:"recorded_by" json:"recorded_by"`
 	RecordedAt   time.Time `bson:"recorded_at" json:"recorded_at"`
+	// AI-2: true when this credit was approved despite a High-risk score.
+	HighRiskOverride bool `bson:"high_risk_override,omitempty" json:"high_risk_override,omitempty"`
 }
 
 // CreateCustomerInput is the request body for creating a customer.

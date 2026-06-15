@@ -35,7 +35,9 @@ func (r *Repo) Save(ctx context.Context, ownerID, role, text string) (Message, e
 
 func (r *Repo) History(ctx context.Context, ownerID string, limit int) ([]Message, error) {
 	filter := bson.M{"owner_id": ownerID}
-	opts := options.Find().SetSort(bson.M{"created_at": 1}).SetLimit(int64(limit))
+	// Sort descending to get the newest [limit] messages, then reverse in memory
+	// so the caller receives them in chronological (oldest-first) order.
+	opts := options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(int64(limit))
 	cursor, err := r.col.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("chat history: %w", err)
@@ -44,6 +46,9 @@ func (r *Repo) History(ctx context.Context, ownerID string, limit int) ([]Messag
 	var msgs []Message
 	if err := cursor.All(ctx, &msgs); err != nil {
 		return nil, fmt.Errorf("decode chat history: %w", err)
+	}
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
 	}
 	return msgs, nil
 }

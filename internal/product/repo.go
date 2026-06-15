@@ -131,7 +131,77 @@ func (repo *Repo) CountLowStock(ctx context.Context, shopID string) (int64, erro
 	return count, nil
 }
 
+// ListAllActive returns every active product across all shops.
+// Used by the nightly forecasting job to avoid per-shop queries.
+func (repo *Repo) ListAllActive(ctx context.Context) ([]Product, error) {
+	cursor, err := repo.col.Find(ctx, bson.M{"is_active": true})
+	if err != nil {
+		return nil, fmt.Errorf("list all active products: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var products []Product
+	if err := cursor.All(ctx, &products); err != nil {
+		return nil, fmt.Errorf("decode all active products: %w", err)
+	}
+	return products, nil
+}
+
+// UpdateForecastFields writes the AI-1 computed fields for a single product.
+//   - alertSentAt non-nil: sets stockout_alert_sent_at to record when the alert first fired.
+//   - clearAlert true: unsets stockout_alert_sent_at so a future crossing can trigger a new alert.
+func (repo *Repo) UpdateForecastFields(ctx context.Context, productID string, days float64, reorderQty int, alertSentAt *time.Time, clearAlert bool) error {
+	setFields := bson.M{
+		"days_until_stockout": days,
+		"reorder_qty":         reorderQty,
+		"updated_at":          time.Now().UTC(),
+	}
+	if alertSentAt != nil {
+		setFields["stockout_alert_sent_at"] = *alertSentAt
+	}
+	updateDoc := bson.M{"$set": setFields}
+	if clearAlert {
+		updateDoc["$unset"] = bson.M{"stockout_alert_sent_at": ""}
+	}
+	if _, err := repo.col.UpdateOne(ctx, bson.M{"_id": productID}, updateDoc); err != nil {
+		return fmt.Errorf("update forecast fields for %s: %w", productID, err)
+	}
+	return nil
+}
+
+// FindByIDs returns all active products matching the given IDs.
+func (repo *Repo) FindByIDs(ctx context.Context, ids []string) ([]Product, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	filter := bson.M{"_id": bson.M{"$in": ids}}
+	cursor, err := repo.col.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("find products by IDs: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var products []Product
+	if err := cursor.All(ctx, &products); err != nil {
+		return nil, fmt.Errorf("decode products by IDs: %w", err)
+	}
+	return products, nil
+}
+
 // ListLowStock returns up to limit active products at or below their low_stock_threshold, sorted by stock ascending.
+// CountStockoutWarningsByShop returns the number of active products in a shop whose
+// AI-1 forecast predicts a stockout within 7 days.
+func (repo *Repo) CountStockoutWarningsByShop(ctx context.Context, shopID string) (int64, error) {
+	filter := bson.M{
+		"shop_id":             shopID,
+		"is_active":           true,
+		"days_until_stockout": bson.M{"$lte": 7, "$exists": true},
+	}
+	count, err := repo.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("count stockout warnings: %w", err)
+	}
+	return count, nil
+}
+
 func (repo *Repo) ListLowStock(ctx context.Context, shopID string, limit int) ([]Product, error) {
 	filter := bson.M{
 		"shop_id":   shopID,

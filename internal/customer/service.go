@@ -14,11 +14,27 @@ import (
 )
 
 type Service struct {
-	repo *Repo
+	repo        *Repo
+	riskScorer  RiskScorer
 }
 
 func NewService(repo *Repo) *Service {
 	return &Service{repo: repo}
+}
+
+// SetRiskScorer wires in the AI-2 scoring implementation after construction,
+// avoiding an import cycle between the customer and riskscoring packages.
+func (svc *Service) SetRiskScorer(scorer RiskScorer) {
+	svc.riskScorer = scorer
+}
+
+func (svc *Service) triggerRiskScore(customerID string) {
+	if svc.riskScorer == nil {
+		return
+	}
+	go func() {
+		_ = svc.riskScorer.Calculate(context.Background(), customerID)
+	}()
 }
 
 // Create creates a new customer for a shop.
@@ -117,6 +133,7 @@ func (svc *Service) RecordPayment(ctx context.Context, customerID, recordedBy st
 		return DebtRecord{}, err
 	}
 
+	svc.triggerRiskScore(customerID)
 	return record, nil
 }
 
@@ -129,8 +146,9 @@ func (svc *Service) GetDebtHistory(ctx context.Context, customerID string) ([]De
 }
 
 // AddCredit adds a credit debt record when a sale is marked as credit.
-// This is typically called from the sales service.
-func (svc *Service) AddCredit(ctx context.Context, customerID, shopID, saleID, recordedBy string, creditAmount float64) (DebtRecord, error) {
+// overrideRiskWarning is true when the caller confirmed a high-risk warning modal;
+// this is persisted on the debt record for audit purposes.
+func (svc *Service) AddCredit(ctx context.Context, customerID, shopID, saleID, recordedBy string, creditAmount float64, overrideRiskWarning bool) (DebtRecord, error) {
 	if creditAmount <= 0 {
 		return DebtRecord{}, errors.New("credit amount must be positive")
 	}
@@ -146,15 +164,16 @@ func (svc *Service) AddCredit(ctx context.Context, customerID, shopID, saleID, r
 	newDebt := customer.TotalDebt + creditAmount
 
 	record := DebtRecord{
-		ID:           uuid.NewString(),
-		CustomerID:   customerID,
-		ShopID:       shopID,
-		SaleID:       saleID,
-		Type:         "credit",
-		Amount:       creditAmount,
-		BalanceAfter: newDebt,
-		RecordedBy:   recordedBy,
-		RecordedAt:   time.Now().UTC(),
+		ID:               uuid.NewString(),
+		CustomerID:       customerID,
+		ShopID:           shopID,
+		SaleID:           saleID,
+		Type:             "credit",
+		Amount:           creditAmount,
+		BalanceAfter:     newDebt,
+		RecordedBy:       recordedBy,
+		RecordedAt:       time.Now().UTC(),
+		HighRiskOverride: overrideRiskWarning,
 	}
 
 	if _, err := svc.repo.CreateDebtRecord(ctx, record); err != nil {
@@ -165,5 +184,6 @@ func (svc *Service) AddCredit(ctx context.Context, customerID, shopID, saleID, r
 		return DebtRecord{}, err
 	}
 
+	svc.triggerRiskScore(customerID)
 	return record, nil
 }

@@ -89,6 +89,12 @@ func (s *Service) isTypeEnabled(prefs *Preferences, t NotificationType) bool {
 		return prefs.DebtPayment
 	case TypeStaffLogin:
 		return prefs.StaffLogin
+	case TypeStockoutForecast:
+		return prefs.StockoutForecast
+	case TypeFraudAlert:
+		return prefs.FraudAlert
+	case TypeWeeklyInsights:
+		return prefs.WeeklyInsights
 	default:
 		return true
 	}
@@ -187,6 +193,74 @@ func (s *Service) NotifyDebtPayment(
 	}()
 }
 
+func (s *Service) NotifyStockoutForecast(
+	ctx context.Context,
+	ownerID bson.ObjectID,
+	shopID, productID, productName string,
+	daysUntilStockout float64,
+	reorderQty int,
+) {
+	go func() {
+		bgCtx := context.Background()
+		msgs := i18n.Get(s.getOwnerLocale(bgCtx, ownerID))
+		_ = s.Notify(bgCtx, CreateNotificationInput{
+			ShopID:  shopID,
+			OwnerID: ownerID,
+			Type:    TypeStockoutForecast,
+			Title:   msgs.NotifStockoutForecastTitle,
+			Body:    fmt.Sprintf(msgs.NotifStockoutForecastBody, productName, int(daysUntilStockout), reorderQty),
+			Data: map[string]string{
+				"product_id":          productID,
+				"days_until_stockout": fmt.Sprintf("%.0f", daysUntilStockout),
+				"reorder_qty":         fmt.Sprintf("%d", reorderQty),
+			},
+		})
+	}()
+}
+
+func (s *Service) NotifyWeeklyInsights(
+	ctx context.Context,
+	ownerID bson.ObjectID,
+	shopID string,
+	weekStart time.Time,
+) {
+	go func() {
+		bgCtx := context.Background()
+		msgs := i18n.Get(s.getOwnerLocale(bgCtx, ownerID))
+		weekLabel := weekStart.Format("2 Jan 2006")
+		_ = s.Notify(bgCtx, CreateNotificationInput{
+			ShopID:  shopID,
+			OwnerID: ownerID,
+			Type:    TypeWeeklyInsights,
+			Title:   msgs.NotifWeeklyInsightsTitle,
+			Body:    fmt.Sprintf(msgs.NotifWeeklyInsightsBody, weekLabel),
+			Data:    map[string]string{"week_start": weekLabel},
+		})
+	}()
+}
+
+func (s *Service) NotifyFraudAlert(
+	ctx context.Context,
+	ownerID bson.ObjectID,
+	shopID, triggerType, details, saleID string,
+) {
+	go func() {
+		bgCtx := context.Background()
+		msgs := i18n.Get(s.getOwnerLocale(bgCtx, ownerID))
+		_ = s.Notify(bgCtx, CreateNotificationInput{
+			ShopID:  shopID,
+			OwnerID: ownerID,
+			Type:    TypeFraudAlert,
+			Title:   msgs.NotifFraudAlertTitle,
+			Body:    details,
+			Data: map[string]string{
+				"sale_id":      saleID,
+				"trigger_type": triggerType,
+			},
+		})
+	}()
+}
+
 func (s *Service) NotifyStaffLogin(
 	ctx context.Context,
 	ownerID bson.ObjectID,
@@ -270,6 +344,15 @@ func (s *Service) UpdatePreferences(
 	}
 	if req.StaffLogin != nil {
 		prefs.StaffLogin = *req.StaffLogin
+	}
+	if req.StockoutForecast != nil {
+		prefs.StockoutForecast = *req.StockoutForecast
+	}
+	if req.FraudAlert != nil {
+		prefs.FraudAlert = *req.FraudAlert
+	}
+	if req.WeeklyInsights != nil {
+		prefs.WeeklyInsights = *req.WeeklyInsights
 	}
 	if req.LargeSaleThreshold != nil && *req.LargeSaleThreshold > 0 {
 		prefs.LargeSaleThreshold = *req.LargeSaleThreshold
