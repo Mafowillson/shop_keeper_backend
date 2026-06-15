@@ -174,20 +174,20 @@ func computeInitialStock(units []UnitDefinition, initialStock map[string]int) in
 // ---- DTOs ---------------------------------------------------------------
 
 type CreateProductInput struct {
-	ShopID            string           `json:"shop_id"`
-	Name              string           `json:"name"`
-	Category          string           `json:"category"`
-	Units             []UnitDefinition `json:"units"`
+	ShopID   string           `json:"shop_id"`
+	Name     string           `json:"name"`
+	Category string           `json:"category"`
+	Units    []UnitDefinition `json:"units"`
 	// InitialStock is a map of unit name → quantity for the opening stock count.
 	// Example: {"carton": 10, "roll": 2, "packet": 3}
 	// The system converts the mix into base units and stores the total in stock_qty.
-	InitialStock      map[string]int   `json:"initial_stock"`
-	LowStockThreshold int              `json:"low_stock_threshold"`
+	InitialStock      map[string]int `json:"initial_stock"`
+	LowStockThreshold int            `json:"low_stock_threshold"`
 }
 
 type UpdateProductInput struct {
-	Name              *string          `json:"name,omitempty"`
-	Category          *string          `json:"category,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Category *string `json:"category,omitempty"`
 	// Units replaces the entire units array when provided. stock_qty is not
 	// recalculated — it remains in the existing base units.
 	Units             []UnitDefinition `json:"units,omitempty"`
